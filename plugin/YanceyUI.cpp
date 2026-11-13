@@ -255,11 +255,9 @@ class YanceyUI : public UI, public IdleCallback
 {
 public:
     YanceyUI()
-        : UI(DISTRHO_UI_DEFAULT_WIDTH, DISTRHO_UI_DEFAULT_HEIGHT)
+        : UI(DISTRHO_UI_DEFAULT_WIDTH, DISTRHO_UI_DEFAULT_HEIGHT, false)   // false = no DPF auto-scale (see applyScaleFactor)
     {
-        const double sf = getScaleFactor();
-        setGeometryConstraints((uint)(kW * 0.6 * sf), (uint)(kH * 0.6 * sf), true, false);
-        if (sf != 1.0) setSize((uint)(kW * sf), (uint)(kH * sf));
+        applyScaleFactor(getScaleFactor(), 1.0);
 
         fFontTitle = createFontFromMemory("yancey-title", kFontShrikhand, kFontShrikhandSize, false);
         fFontHeavy = createFontFromMemory("yancey-heavy", kFontDMSansXB, kFontDMSansXBSize, false);
@@ -309,7 +307,7 @@ public:
         Prefs pr;
         if (readPrefs(pr)) {
             if (pr.dark >= 0) { fDark = pr.dark != 0; fDarkT.snap(fDark ? 1.f : 0.f); fT = fDark ? fTD : fTL; }
-            if (pr.scale >= 0.5f && pr.scale <= 4.f) setSize((uint)std::lround(kW * pr.scale), (uint)std::lround(kH * pr.scale));
+            if (pr.uscale > 0.f || pr.scale > 0.f) applyScaleFactor(fScale, savedUserScale(pr));
         }
         readComputerSetup(pr);
         fNativeWin = getWindow().getNativeWindowHandle();
@@ -498,10 +496,11 @@ protected:
         } else if (std::strcmp(key, "preset") == 0) {
             if (value[0]) std::snprintf(fPresetName, sizeof(fPresetName), "%s", value);
         } else if (std::strcmp(key, "size") == 0) {
-            const float sc = value[0] ? (float)std::atof(value) : 0.f;
-            if (sc >= 0.5f && sc <= 4.f) {
-                const uint w = (uint)std::lround(kW * sc), h = (uint)std::lround(kH * sc);
-                if (std::abs((int)w - (int)getWidth()) > 2) { setSize(w, h); fLastW = (float)w; fLastH = (float)h; fSizeDirty = false; }
+            const float sc = value[0] ? (float)std::atof(value[0] == 'u' ? value + 1 : value) : 0.f;
+            if (sc > 0.1f) {
+                const double u = clampUserScale(value[0] == 'u' ? sc : sc / fScale);
+                const uint w = (uint)std::lround(kW * u * fScale);
+                if (std::abs((int)w - (int)getWidth()) > 2) { applyScaleFactor(fScale, u); fLastW = (float)getWidth(); fLastH = (float)getHeight(); fSizeDirty = false; }
             }
         }
         wake();
@@ -638,12 +637,12 @@ protected:
             if (W != fLastW || H != fLastH) { fLastW = W; fLastH = H; fSizeChangedAt = t; fSizeDirty = true; }
             else if (fSizeDirty && t - fSizeChangedAt > 0.6) {
                 fSizeDirty = false;
-                const float sc = W / kW;
+                const float sc = (float)userScale();
                 if (std::fabs(sc - fSavedScale) > 0.003f) {
                     fSavedScale = sc;
-                    char b[24]; std::snprintf(b, sizeof(b), "%.4f", sc);
+                    char b[24]; std::snprintf(b, sizeof(b), "u%.4f", sc);   // "u": the user's scale, not pixels
                     setState("size", b);
-                    Prefs up; up.scale = sc; writePrefs(up);
+                    Prefs up; up.uscale = sc; up.scale = W / kW; writePrefs(up);
                 }
             }
         }
@@ -3399,10 +3398,43 @@ protected:
 
     void resetWindowSize()
     {
-        const double sf = getScaleFactor();
-        setSize((uint)std::lround(kW * sf), (uint)std::lround(kH * sf));
+        applyScaleFactor(getScaleFactor(), 1.0);
         wake();
     }
+
+    // ---- window size (Mac Retina fix). DPF's own auto-scaling is OFF (the UI(...) third argument): DPF already
+    // makes the window scale-factor times bigger when it creates it, and auto-scaling then resized it again, so a
+    // 2x screen got 4x and clicks missed. We size the window in real pixels ourselves; drawing and the mouse both
+    // work from getWidth() / kW, so they always match. fScale = the screen's scale factor; the user's own size is
+    // a scale on top of it (1 = default), kept between 0.75x and 2x.
+    double fScale = 1.0;
+    static double clampUserScale(double u) { return u < 0.75 ? 0.75 : (u > 2.0 ? 2.0 : u); }
+    double userScale() const { return getWidth() / (kW * fScale); }
+    void applyScaleFactor(double sf, double user)
+    {
+        fScale = sf > 0.1 ? sf : 1.0;
+        user = clampUserScale(user);
+        // minimum size (about 0.75x, rounded to a whole multiple of the aspect ratio so DPF's keep-aspect doesn't
+        // shave a pixel off), keep the aspect ratio, and NO automatic scaling (4th argument false)
+        const uint dw = (uint)kW, dh = (uint)kH;
+        uint a = dw, b = dh; while (b) { const uint t = a % b; a = b; b = t; }
+        const uint uw = dw / a, uh = dh / a, n = (uint)std::ceil(dw * 0.75 * fScale / uw);
+        setGeometryConstraints(n * uw, n * uh, true, false);
+        setSize((uint)std::lround(kW * user * fScale), (uint)std::lround(kH * user * fScale));
+    }
+    void uiScaleFactorChanged(double sf) override   // the window moved to a screen with a different scale
+    {
+        const double u = userScale();
+        applyScaleFactor(sf, u > 0.5 ? u : 1.0);
+    }
+    // the size saved by older builds is a pixel ratio (it includes the screen's scale)
+    double savedUserScale(const Prefs& pr) const
+    {
+        if (pr.uscale > 0.f) return pr.uscale;
+        if (pr.scale > 0.f) return pr.scale / fScale;
+        return 1.0;
+    }
+
 
     void resetProjectPads()
     {

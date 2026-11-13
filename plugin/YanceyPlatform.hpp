@@ -13,7 +13,8 @@ bool readFileBytes(const char* path, std::vector<uint8_t>& out);
 // Global preferences shared by every Yancey on this computer; unset values are -1 / 0 / empty.
 // The controller setup lives here too, so every project already knows your controller.
 struct Prefs {
-    float scale = 0.f;
+    float scale = 0.f;       // window width / design width, in pixels (older builds read this one)
+    float uscale = 0.f;      // the user's chosen size on top of the screen's scale factor (1 = default)
     int dark = -1;
     int kmode = -1;          // knob encoding (KnobMode)
     int notes = -2;          // note map start (-1 off, -2 unset)

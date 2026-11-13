@@ -175,6 +175,7 @@ bool readPrefs(Prefs& p)
         if (eq == std::string::npos) continue;
         const std::string k = line.substr(0, eq), v = line.substr(eq + 1);
         if (k == "scale") p.scale = (float)std::atof(v.c_str());
+        if (k == "uscale") p.uscale = (float)std::atof(v.c_str());
         else if (k == "dark") p.dark = std::atoi(v.c_str());
         else if (k == "kmode") p.kmode = std::atoi(v.c_str());
         else if (k == "notes") p.notes = std::atoi(v.c_str());
@@ -196,6 +197,7 @@ void writePrefs(const Prefs& update)
     Prefs cur;
     readPrefs(cur);
     if (update.scale > 0.f) cur.scale = update.scale;
+    if (update.uscale > 0.f) cur.uscale = update.uscale;
     if (update.dark >= 0) cur.dark = update.dark;
     if (update.kmode >= 0) cur.kmode = update.kmode;
     if (update.notes >= -1) cur.notes = update.notes;
@@ -218,6 +220,7 @@ void writePrefs(const Prefs& update)
 #endif
     if (f == nullptr) return;
     std::fprintf(f, "scale=%.4f\ndark=%d\n", cur.scale > 0.f ? cur.scale : 1.f, cur.dark >= 0 ? cur.dark : 0);
+    if (cur.uscale > 0.f) std::fprintf(f, "uscale=%.4f\n", cur.uscale);
     if (cur.kmode >= 0) std::fprintf(f, "kmode=%d\n", cur.kmode);
     if (cur.notes >= -1) std::fprintf(f, "notes=%d\n", cur.notes);
     if (cur.norder >= 0) std::fprintf(f, "norder=%d\n", cur.norder);

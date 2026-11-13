@@ -43,6 +43,12 @@ On Windows, build the checks with x86_64-w64-mingw32-g++ -static. One known fail
 "CRUSHER · ALT sounds the same as LOFI", is old and harmless. `test/htest.cpp` is a small CLAP host that can
 also open the UI (`./htest plugin/bin/Dewitt.clap gui`, X11).
 
+**Retina check (no Mac needed):** `test/retina.sh <plugin.clap> <design width> <design height> <x,y of a button>
+<output prefix>` opens the window the way a DAW does at `DPF_SCALE_FACTOR=1` and `=2` (Linux, Xvfb): the window
+must be 2x the design size at 2x (not 4x), the drawing must fill it, and the same click must do the same thing
+at both. Dewitt: `1080 640 124,272`; Airliner: `1180 630 465,253`; Airliner Looper / Vinyl: `600 630 466,254` /
+`600 630 300,567`. Build `build-tests/htest` from `test/htest.cpp` first (`-ldl -lX11`).
+
 ## DPF patches
 
 `tools/setup-dpf.sh` copies the three files in `plugin/dpf-patches/` over DPF's:

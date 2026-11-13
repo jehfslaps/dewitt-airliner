@@ -23,7 +23,7 @@
 #define DISTRHO_UI_FILE_BROWSER         1
 #define DISTRHO_PLUGIN_WANT_DIRECT_ACCESS 1
 #define DISTRHO_UI_DEFAULT_WIDTH        1080
-#define DISTRHO_UI_DEFAULT_HEIGHT       840
+#define DISTRHO_UI_DEFAULT_HEIGHT       640   // = kH in YanceyUI.cpp
 
 // AU: an effect that takes MIDI (the pads), so Logic lists it as a MIDI-controlled effect
 #define DISTRHO_PLUGIN_AU_TYPE          aumf

@@ -314,19 +314,26 @@ int main(int argc, char** argv)
     } else {
         Display* dpy = XOpenDisplay(nullptr);
         if (!dpy) { printf("no display\n"); return 1; }
-        const int W = argc > 3 ? atoi(argv[3]) : 1080, H = argc > 4 ? atoi(argv[4]) : 840;
-        Window win = XCreateSimpleWindow(dpy, DefaultRootWindow(dpy), 0, 0, W, H, 0, 0, 0);
-        XMapWindow(dpy, win); XFlush(dpy);
+        int W = argc > 3 ? atoi(argv[3]) : 1080, H = argc > 4 ? atoi(argv[4]) : 840;
         auto* g = (const clap_plugin_gui*)P->get_extension(P, CLAP_EXT_GUI);
         gTimerExt = (const clap_plugin_timer_support_t*)P->get_extension(P, CLAP_EXT_TIMER_SUPPORT);
         g->create(P, CLAP_WINDOW_API_X11, false);
-        g->set_scale(P, 1.0);
-        g->set_size(P, W, H);
+        // HTEST_NATIVE=1: open at the size the plug-in asks for, like a DAW does (run with DPF_SCALE_FACTOR=2 to
+        // check a Retina-style 2x screen: the window must be 2x the design size, not 4x)
+        const bool native = getenv("HTEST_NATIVE") != nullptr;
+        Window win = XCreateSimpleWindow(dpy, DefaultRootWindow(dpy), 0, 0, W, H, 0, 0, 0);
+        XMapWindow(dpy, win); XFlush(dpy);
+        if (!native) { g->set_scale(P, 1.0); g->set_size(P, W, H); }
         clap_window cw; cw.api = CLAP_WINDOW_API_X11; cw.x11 = win;
         g->set_parent(P, &cw);
         g->show(P);
         for (int i = 0; i < 20; ++i) { if (gTimerExt) gTimerExt->on_timer(P, 1); usleep(10000); }
-        { uint32_t aw = W, ah = H; g->adjust_size(P, &aw, &ah); bool ok = g->set_size(P, aw, ah); uint32_t gw = 0, gh = 0; g->get_size(P, &gw, &gh); printf("resize %dx%d -> adjust %ux%u ok=%d now %ux%u\n", W, H, aw, ah, ok, gw, gh); fflush(stdout); }
+        if (native) {
+            // the window as the plug-in sized it, like a DAW does
+            uint32_t gw = 0, gh = 0; g->get_size(P, &gw, &gh);
+            printf("plug-in size %ux%u\n", gw, gh); fflush(stdout);
+            XResizeWindow(dpy, win, gw, gh); XFlush(dpy);
+        } else { uint32_t aw = W, ah = H; g->adjust_size(P, &aw, &ah); bool ok = g->set_size(P, aw, ah); uint32_t gw = 0, gh = 0; g->get_size(P, &gw, &gh); printf("resize %dx%d -> adjust %ux%u ok=%d now %ux%u\n", W, H, aw, ah, ok, gw, gh); fflush(stdout); }
         // optional scripted setup through parameters
         const char* script = argc > 5 ? argv[5] : "";
         if (std::strstr(script, "pads")) { tap(pPad0 + 2); tap(pPad0 + 4); }

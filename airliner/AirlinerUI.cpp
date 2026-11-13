@@ -161,11 +161,9 @@ class AirlinerUI : public UI, public IdleCallback
 {
 public:
     AirlinerUI()
-        : UI(DISTRHO_UI_DEFAULT_WIDTH, DISTRHO_UI_DEFAULT_HEIGHT)
+        : UI(DISTRHO_UI_DEFAULT_WIDTH, DISTRHO_UI_DEFAULT_HEIGHT, false)   // false = no DPF auto-scale (see applyScaleFactor)
     {
-        const double sf = getScaleFactor();
-        setGeometryConstraints((uint)(kW * 0.6 * sf), (uint)(kH * 0.6 * sf), true, false);
-        if (sf != 1.0) setSize((uint)(kW * sf), (uint)(kH * sf));
+        applyScaleFactor(getScaleFactor(), 1.0);
 
         fFontTitle = createFontFromMemory("air-title", kFontShrikhand, kFontShrikhandSize, false);
         fFontHeavy = createFontFromMemory("air-heavy", kFontDMSansXB, kFontDMSansXBSize, false);
@@ -199,7 +197,7 @@ public:
         yancey::Prefs pr;
         if (yancey::readPrefs(pr)) {
             if (pr.dark >= 0) { fDark = pr.dark != 0; fDarkT.snap(fDark ? 1.f : 0.f); fT = fDark ? fTD : fTL; }
-            if (pr.scale >= 0.5f && pr.scale <= 4.f) { setSize((uint)std::lround(kW * pr.scale), (uint)std::lround(kH * pr.scale)); fSavedScale = pr.scale; }
+            if (pr.uscale > 0.f || pr.scale > 0.f) { applyScaleFactor(fScale, savedUserScale(pr)); fSavedScale = (float)userScale(); }
             parseMap(pr.map.c_str());
             fJump = pr.kjump == 1;
             fOneEach = pr.kgrid == 1;
@@ -213,6 +211,40 @@ public:
     }
 
     ~AirlinerUI() override { removeIdleCallback(this); }
+
+    // ---- window size (Mac Retina fix). DPF's own auto-scaling is OFF (the UI(...) third argument): DPF already
+    // makes the window scale-factor times bigger when it creates it, and auto-scaling then resized it again, so a
+    // 2x screen got 4x and clicks missed. We size the window in real pixels ourselves; drawing and the mouse both
+    // work from getWidth() / kW, so they always match. fScale = the screen's scale factor; the user's own size is
+    // a scale on top of it (1 = default), kept between 0.75x and 2x.
+    double fScale = 1.0;
+    static double clampUserScale(double u) { return u < 0.75 ? 0.75 : (u > 2.0 ? 2.0 : u); }
+    double userScale() const { return getWidth() / (kW * fScale); }
+    void applyScaleFactor(double sf, double user)
+    {
+        fScale = sf > 0.1 ? sf : 1.0;
+        user = clampUserScale(user);
+        // minimum size (about 0.75x, rounded to a whole multiple of the aspect ratio so DPF's keep-aspect doesn't
+        // shave a pixel off), keep the aspect ratio, and NO automatic scaling (4th argument false)
+        const uint dw = (uint)kW, dh = (uint)kH;
+        uint a = dw, b = dh; while (b) { const uint t = a % b; a = b; b = t; }
+        const uint uw = dw / a, uh = dh / a, n = (uint)std::ceil(dw * 0.75 * fScale / uw);
+        setGeometryConstraints(n * uw, n * uh, true, false);
+        setSize((uint)std::lround(kW * user * fScale), (uint)std::lround(kH * user * fScale));
+    }
+    void uiScaleFactorChanged(double sf) override   // the window moved to a screen with a different scale
+    {
+        const double u = userScale();
+        applyScaleFactor(sf, u > 0.5 ? u : 1.0);
+    }
+    // the size saved by older builds is a pixel ratio (it includes the screen's scale)
+    double savedUserScale(const yancey::Prefs& pr) const
+    {
+        if (pr.uscale > 0.f) return pr.uscale;
+        if (pr.scale > 0.f) return pr.scale / fScale;
+        return 1.0;
+    }
+
 
 protected:
     // --------------------------------------------------------------------------------------------
@@ -308,8 +340,8 @@ protected:
             if (W != fLastW || H != fLastH) { fLastW = W; fLastH = H; fSizeChangedAt = t; fSizeDirty = true; }
             else if (fSizeDirty && t - fSizeChangedAt > 0.6) {
                 fSizeDirty = false;
-                const float sc = W / kW;
-                if (std::fabs(sc - fSavedScale) > 0.003f) { fSavedScale = sc; yancey::Prefs up; up.scale = sc; yancey::writePrefs(up); }
+                const float sc = (float)userScale();
+                if (std::fabs(sc - fSavedScale) > 0.003f) { fSavedScale = sc; yancey::Prefs up; up.uscale = sc; up.scale = W / kW; yancey::writePrefs(up); }
             }
         }
         if (moving || looping || fWake > 0) { if (fWake > 0) --fWake; repaint(); }
