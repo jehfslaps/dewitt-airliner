@@ -1007,6 +1007,12 @@ public:
     }
     void clear() { std::fill(cb[0].begin(), cb[0].end(), 0.f); std::fill(cb[1].begin(), cb[1].end(), 0.f); held[0] = held[1] = 0.f; }
     inline void process(float& l, float& r, bool on) {
+        if (on && ramp.v <= 0.f) {
+            // starting from silence: the knobs jump straight to where they are (nothing to click yet), so every
+            // start sounds the same however the knobs moved while it was off
+            freqSm.y = tFreq; depthSm.y = tDepth; mixSm.y = tMix; bitsSm.y = tBits; decSm.y = tDec;
+            rangeSm.y = tRange; fbSm.y = tFb; holdAcc = 0.f;
+        }
         const float a = ramp.tick(on);
         if (a <= 0.f) return;
         if (ts.tick()) { std::fill(cb[0].begin(), cb[0].end(), 0.f); std::fill(cb[1].begin(), cb[1].end(), 0.f); }

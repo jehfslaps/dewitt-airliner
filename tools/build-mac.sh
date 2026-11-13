@@ -112,7 +112,7 @@ runcheck() {   # label exe plugin rate [arch-prefix]
   local ok=$(grep -c '^ok' "$log" || true) fails=$(tail -1 "$log")
   echo "$1 @ $4 Hz: $ok ok, $fails"
   grep '^FAIL' "$log" || true
-  case "$fails" in "0 failure(s)") ;; *) [ "$4" = 48000 ] && FAILED=1 ;; esac
+  case "$fails" in "0 failure(s)") ;; *) if [ "$4" = 48000 ]; then FAILED=1; fi ;; esac
 }
 runcheck Dewitt    wtest    Dewitt.clap    48000
 runcheck Dewitt    wtest    Dewitt.clap    44100
