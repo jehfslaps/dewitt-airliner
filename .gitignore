@@ -1,0 +1,12 @@
+dpf/
+plugin/bin/
+plugin/build/
+airliner/bin/
+airliner/build-*/
+freetype/*.a
+build-tests/
+stage/
+dist/
+*.o
+.DS_Store
+__pycache__/

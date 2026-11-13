@@ -1,0 +1,94 @@
+name: Mac build
+
+# Mac release build of Dewitt and Airliner: universal (Apple Silicon + Intel) VST3, AU and CLAP, checked,
+# signed, AU-validated, with installers (tools/build-mac.sh does the work).
+#   - push to main, or by hand (Actions > Mac build > Run workflow): the files come back as the "Mac-release"
+#     download on the run's page
+#   - push a tag like mac-v1.2-beta1: the same, plus a DRAFT pre-release on the repo's Releases page, for you to
+#     look over and publish
+# Secrets are never given to pull requests from forks (this workflow doesn't run on pull requests at all).
+# Signing and notarizing switch on by themselves once these repository secrets exist (Settings > Secrets and
+# variables > Actions), all from an Apple Developer account:
+#   MAC_CERT_P12_BASE64     your "Developer ID Application" and "Developer ID Installer" certificates, exported
+#                           together from Keychain Access as one .p12, base64-encoded
+#   MAC_CERT_PASSWORD       the .p12's password
+#   MAC_SIGN_APP            e.g. "Developer ID Application: Your Name (TEAMID)"
+#   MAC_SIGN_INSTALLER      e.g. "Developer ID Installer: Your Name (TEAMID)"
+#   APPLE_ID, APPLE_TEAM_ID, APPLE_APP_PASSWORD   (an app-specific password from appleid.apple.com)
+on:
+  push:
+    branches: [main]
+    tags: ['mac-v*']
+  workflow_dispatch:
+    inputs:
+      label:
+        description: 'Text after the version in file names (empty for a final release)'
+        default: 'beta'
+        required: false
+      airliner_all:
+        description: 'Also build Airliner Looper and Airliner Vinyl'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write     # only used to make the draft release from a mac-v* tag
+
+jobs:
+  mac:
+    runs-on: macos-15          # Apple Silicon (macos-14 is no longer offered)
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Signing certificates (when the secrets are set)
+        env:
+          P12: ${{ secrets.MAC_CERT_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+        run: |
+          if [ -z "$P12" ]; then echo "no signing secrets: building ad-hoc signed test files"; exit 0; fi
+          KC="$RUNNER_TEMP/sign.keychain-db"; KP="$(uuidgen)"
+          echo "$P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$KP" "$KC"
+          security set-keychain-settings -lut 21600 "$KC"
+          security unlock-keychain -p "$KP" "$KC"
+          security import "$RUNNER_TEMP/cert.p12" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$KC"
+          security set-key-partition-list -S apple-tool:,apple: -k "$KP" "$KC" > /dev/null
+          security list-keychains -d user -s "$KC" $(security list-keychains -d user | tr -d '"')
+          rm -f "$RUNNER_TEMP/cert.p12"
+          security find-identity -v -p codesigning "$KC"
+
+      - name: Build, check, sign and package
+        env:
+          LABEL: ${{ github.event_name == 'workflow_dispatch' && inputs.label || 'beta' }}
+          AIRLINER_ALL: ${{ inputs.airliner_all && '1' || '0' }}
+          MAC_SIGN_APP: ${{ secrets.MAC_CERT_P12_BASE64 != '' && secrets.MAC_SIGN_APP || '' }}
+          MAC_SIGN_INSTALLER: ${{ secrets.MAC_CERT_P12_BASE64 != '' && secrets.MAC_SIGN_INSTALLER || '' }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: tools/build-mac.sh
+
+      - name: Mac-release
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mac-release
+          path: dist/release/
+          if-no-files-found: ignore
+          retention-days: 30
+      - name: Logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs
+          path: dist/logs/
+          retention-days: 14
+
+      - name: Draft pre-release (mac-v* tags only)
+        if: startsWith(github.ref, 'refs/tags/mac-v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/release/* --draft --prerelease \
+            --title "Mac $GITHUB_REF_NAME" \
+            --notes "Mac test build of Dewitt and Airliner: universal (Apple Silicon + Intel), VST3, AU and CLAP, macOS 10.15+. Checks and signing details are in the run's logs."
