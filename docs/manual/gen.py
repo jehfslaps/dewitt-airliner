@@ -212,14 +212,19 @@ cards = {f: [] for f in fam_title}
 for fx in data["effects"]:
     knobs = " · ".join(f'<b>{e(k["label"])}</b> {e(k["def"])}' for k in fx["knobs"])
     cards[fx["family"]].append(f'<div class="fx"><h3>{nice(fx["name"])}</h3><p>{e(EFFECT_DESC[fx["id"]])}</p><div class="ctl">{knobs}</div></div>')
-def fxpage(fams, first):
+SMEAR_TIP = """<div class="note"><b>The reverb throw: SMEAR.</b> Hold SMEAR on a word, a shout or the last hit before a drop.
+While you hold, the beat drops out and everything smears into one giant hanging wash. Let go and the beat is straight back,
+with the smear ringing out darker and quieter underneath for as long as DECAY says (12 seconds to start). <b>DRY CUT</b> below
+100% keeps some beat under the wash; <b>TAIL</b> sets how loud the ring-out is after you let go.</div>"""
+
+def fxpage(fams, first, extra=""):
     body = "<h1>Effects</h1><p>Every effect, in the order they stack. The knobs are listed with where they start.</p>" if first else ""
     for f in fams:
         body += f'<h2>{e(fam_title[f])}</h2>' + (f'<p class="small">{e(fam_note[f])}</p>' if fam_note[f] else "") + f'<div class="fxgrid">{"".join(cards[f])}</div>'
-    page("06 · effects", "06 / effects", body)
+    page("06 · effects", "06 / effects", body + extra)
 fxpage(["TIME"], True)
 fxpage(["FILTER", "MOD"], False)
-fxpage(["TEXTURE", "SPACE"], False)
+fxpage(["TEXTURE", "SPACE"], False, SMEAR_TIP)
 
 # ------------------------------------------------------------------ 07 moves
 mv = "".join(f'<tr><td>{e(m["name"])}</td><td>{"hold" if m["hold"] else "tap"}</td><td>{e(MOVE_DESC[m["id"]])}</td></tr>' for m in data["moves"])
@@ -230,6 +235,7 @@ page("07 · moves", "07 / moves", f"""
 <div class="cols"><div>
 <p><b>Throw</b> and <b>Freeze</b> have knobs: select the pad and set them on its card (Throw: TIME and FEEDBACK; Freeze: length and speed). <b>Dry Kill</b>'s knob sets how loud the tails ring.</p>
 <p><b>Kill vs Dry Kill:</b> Kill mutes everything. Dry Kill mutes the beat but lets echo and reverb tails keep ringing: the classic dub drop.</p>
+<p><b>Dry Kill vs SMEAR:</b> Dry Kill only lets tails that are already there ring. SMEAR (an effect, section 06) makes its own giant tail out of whatever plays while you hold it: the reverb throw.</p>
 </div><div>
 <div class="fig tight"><img src="img/move.png"><div class="cap">THROW selected: its TIME and FEEDBACK knobs.</div></div>
 </div></div>
