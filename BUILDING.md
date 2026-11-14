@@ -39,8 +39,7 @@ g++ -std=gnu++17 -O2 -ffast-math -fno-finite-math-only -Idpf/distrho/src -Iplugi
 g++ -std=gnu++17 -O2 -Iplugin test/foldtest.cpp -o foldtest && ./foldtest    # the fewer-knobs rules
 ```
 
-On Windows, build the checks with x86_64-w64-mingw32-g++ -static. One known failure at 44.1 kHz only,
-"CRUSHER · ALT sounds the same as LOFI", is old and harmless. `test/htest.cpp` is a small CLAP host that can
+On Windows, build the checks with x86_64-w64-mingw32-g++ -static. `test/htest.cpp` is a small CLAP host that can
 also open the UI (`./htest plugin/bin/Dewitt.clap gui`, X11).
 
 **Retina check (no Mac needed):** `test/retina.sh <plugin.clap> <design width> <design height> <x,y of a button>

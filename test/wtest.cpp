@@ -347,6 +347,53 @@ int main(int argc, char** argv)
             pushParam(slotParam(9, F_LATCH), 0); run(0.05);
         }
 
+        // ------------------------------------------------ banks: B and C from bank A with one press; bank buttons; follow mode
+        {
+            int map[kNumLearn]; for (int& m : map) m = -1;
+            for (int q = 0; q < 16; ++q) map[q] = midiCode(false, 0, 36 + q);
+            int out[16], dCh = 0, dNum = 0;
+            bool ok = bankFromA(map, 1, 0, midiCode(false, 0, 52), out, dCh, dNum);
+            bool all = ok && dNum == 16 && dCh == 0; for (int q = 0; q < 16; ++q) all &= out[q] == midiCode(false, 0, 52 + q);
+            CHECK(all, "bank B from one press: a controller whose bank B is 16 notes higher");
+            ok = bankFromA(map, 2, 0, midiCode(false, 2, 36), out, dCh, dNum);
+            all = ok && dCh == 2 && dNum == 0; for (int q = 0; q < 16; ++q) all &= out[q] == midiCode(false, 2, 36 + q);
+            CHECK(all, "bank C from one press: a controller that changes MIDI channel");
+            CHECK(!bankFromA(map, 1, 0, midiCode(false, 0, 36), out, dCh, dNum), "the same note as A1: no fill (the controller has no banks)");
+            CHECK(!bankFromA(map, 1, 0, midiCode(true, 0, 36), out, dCh, dNum), "a knob instead of a pad: no fill");
+            CHECK(!bankFromA(map, 1, 0, midiCode(false, 0, 40), out, dCh, dNum), "a fill that would land on bank A's own notes: no fill");
+            map[kLearnKnob0] = midiCode(false, 0, 125);
+            ok = bankFromA(map, 1, 0, midiCode(false, 0, 118), out, dCh, dNum);
+            CHECK(ok && out[6] == midiCode(false, 0, 124) && out[7] == -1 && out[9] == midiCode(false, 0, 127) && out[10] == -1 && out[15] == -1,
+                  "a fill leaves out notes past 127 and never takes a note that's in use");
+
+            std::string dir = prefsTestDir();
+            std::string mm;
+            for (int i = 0; i < kNumLearn; ++i) {
+                const int c = i < 16 ? midiCode(false, 0, 36 + i) : (i == kLearnBank0 + 1 ? midiCode(true, 0, 21) : (i == kLearnBank0 + 2 ? midiCode(true, 0, 22) : -1));
+                char b[16]; std::snprintf(b, sizeof(b), i ? ",%d" : "%d", c); mm += b;
+            }
+            auto writeFollow = [&](int fol) { FILE* f = fopen((dir + "/settings.txt").c_str(), "wb"); fprintf(f, "welcomed3=1\nfollow=%d\nmap3=%s\n", fol, mm.c_str()); fclose(f); };
+            auto reload = [&](const char* tag) { std::string st = saveState(); setStateKey(st, "ctlmap", tag); loadState(st); run(0.05); };
+            auto hitPad = [&](int note) { pushMidi(0x90, (uint8_t)note, 100); run(0.05); const int p = (int)std::lround(getv(oPadHit)); pushMidi(0x80, (uint8_t)note, 0); run(0.05); return p; };
+            auto showBank = [&](int b) { std::string st = saveState(); setStateKey(st, "bank", std::to_string(b)); loadState(st); run(0.02); };
+            writeFollow(0); reload("fol0"); showBank(2);
+            CHECK(hitPad(37) == 1, "follow off: bank A's pads play bank A whatever bank is on screen");
+            writeFollow(1); reload("fol1"); showBank(0);
+            const int a = hitPad(37); showBank(2); const int c = hitPad(37);
+            CHECK(a == 1 && c == 33, "follow on: bank A's pads play the bank on screen (A2 -> C2)");
+            pushMidi(0xB0, 21, 127); run(0.02); pushMidi(0xB0, 21, 0); run(0.02);
+            CHECK((int)std::lround(getv(oBank)) == 1 && hitPad(40) == 20, "a learned bank button switches the bank (B), and the pads follow it");
+            pushParam(slotParam(18, F_TYPE), typeOfEffect(kFxLpf)); run(0.05);
+            pushMidi(0x90, 38, 100); run(0.1); const float held = getv(oEff0 + 18);
+            pushMidi(0xB0, 22, 127); run(0.02); pushMidi(0xB0, 22, 0); run(0.02);
+            pushMidi(0x80, 38, 0); run(0.3); const float after = getv(oEff0 + 18);
+            printf("     B3 (LP Filter) while held %.2f, after letting go on bank C %.2f\n", held, after);
+            CHECK((int)std::lround(getv(oBank)) == 2 && held > 0.5f && after < 0.01f, "a pad held across a bank change lets go of the pad it started (B3)");
+            pushParam(slotParam(18, F_TYPE), kTypeEmpty); run(0.05);
+            CHECK(hitPad(38) == 34, "and the next press plays the new bank (C3)");
+            writeFollow(0); reload("fol0b"); showBank(0);
+        }
+
         endlessChecks();
         clickChecks();
         valensChecks();

@@ -216,7 +216,7 @@ enum ParamId {
     oMoves = oSmpPos0 + kNumSlots, oBpm, oFocus, oFocusPhase, oPicked,
     oJob0, oJobSeq = oJob0 + kNumJobs, oLearned, oLearnSeq, oMidiSeq, oMidiState, oPadHit, oPadHitSeq, oLevel, oKill, oGrabPhase,
     oLearnDup, oLearnDupSeq, oMidiLast, oMidiLastSeq, oRepeatSeq, oVoices, oKnobTypes,
-    oBeatReadyLo, oBeatReadyHi, oBeatPlaying, oBeatBpm,
+    oBeatReadyLo, oBeatReadyHi, oBeatPlaying, oBeatBpm, oBank,
     kParamCount
 };
 
@@ -229,9 +229,41 @@ static constexpr float kPadVolDefault = 0.8f;
 static inline float padVolGain(float v) { const float g = v / 0.8f; return g * g; }
 
 // ------------------------------------------------------------------------------------------------
-// MIDI learn slots: 0-47 pads (by position, page by page), 48-55 the eight knobs
+// MIDI learn slots: 0-47 pads (by position, page by page), 48-55 the eight knobs, 56-58 buttons that show bank A/B/C
 
-enum { kLearnPad0 = 0, kLearnKnob0 = kNumPads, kNumLearn = kNumPads + kNumJobs };
+enum { kLearnPad0 = 0, kLearnKnob0 = kNumPads, kLearnBank0 = kNumPads + kNumJobs, kNumLearn = kLearnBank0 + kNumPages };
+static inline bool isKnobLearn(int s) { return s >= kLearnKnob0 && s < kLearnBank0; }
+
+// Bank B or C from bank A, from one press: the pad at bank A's position refQ sends refCode, the same pad on the
+// new bank sent code. Every bank A pad is moved by the same step (notes up or down, MIDI channel, or both).
+// out16: the new bank's 16 codes (-1 where it doesn't fit). Pads whose code another slot outside this bank already
+// uses stay -1 (nothing is taken from another pad, knob or bank button). False when it can't work: a different
+// kind of message, the same code (the controller sends the same notes on every bank), or the new codes landing
+// on bank A's own codes. dCh / dNum: the step, for the setup to describe it.
+static inline bool bankFromA(const int* map, int pg, int refQ, int code, int* out16, int& dCh, int& dNum)
+{
+    for (int q = 0; q < kPadsPerPage; ++q) out16[q] = -1;
+    if (pg <= 0 || pg >= kNumPages || refQ < 0 || refQ >= kPadsPerPage) return false;
+    const int ref = map[kLearnPad0 + refQ];
+    if (ref < 0 || code < 0 || (ref & 0x30000) != (code & 0x30000) || ref == code) return false;
+    dCh = ((code >> 8) & 15) - ((ref >> 8) & 15);
+    dNum = (code & 0x7f) - (ref & 0x7f);
+    int n = 0;
+    for (int q = 0; q < kPadsPerPage; ++q) {
+        const int a = map[kLearnPad0 + q];
+        if (a < 0) continue;
+        const int ch = ((a >> 8) & 15) + dCh, num = (a & 0x7f) + dNum;
+        if (ch < 0 || ch > 15 || num < 0 || num > 127) continue;
+        const int c = (a & 0x30000) | (ch << 8) | num;
+        for (int k = 0; k < kPadsPerPage; ++k) if (map[kLearnPad0 + k] == c) return false;   // lands on bank A
+        bool taken = false;
+        for (int k = 0; k < kNumLearn; ++k)
+            if (map[k] == c && !(k >= kLearnPad0 + pg * kPadsPerPage && k < kLearnPad0 + (pg + 1) * kPadsPerPage)) taken = true;
+        if (taken) continue;
+        out16[q] = c; ++n;
+    }
+    return n > 0;
+}
 
 // all eight knobs follow the selected pad's controls (no output knob on the controller)
 enum JobId { kJobCtl1 = 0, kJobCtl2, kJobCtl3, kJobCtl4, kJobCtl5, kJobCtl6, kJobCtl7, kJobCtl8 };

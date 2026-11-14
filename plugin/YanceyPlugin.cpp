@@ -296,6 +296,7 @@ public:
         for (int i = 0; i < kParamCount; ++i) fParams[i] = fLive[i] = paramDefault(i);
         for (int s = 0; s < kNumSlots; ++s) { fLatched[s] = fHeld[s] = fActive[s] = false; fSmpPos[s] = -1.f; }
         for (int p = 0; p < kNumPads; ++p) { fPadMidi[p] = fPadNote[p] = fPadPrev[p] = false; fPadAmt[p] = 1.f; }
+        for (int& h : fFollowHeld) h = -1;
         for (int m = 0; m < kNumMoves; ++m) fMoveOn[m] = false;
         for (int i = 0; i < kNumLearn; ++i) fMap[i].store(-1);
         for (int j = 0; j < kNumJobs; ++j) fSavedType[j].store(0);
@@ -514,6 +515,7 @@ protected:
             case oBeatReadyHi: n = "Beats Ready B"; sy = "beats_ready_b"; break;
             case oBeatPlaying: n = "Beat Playing"; sy = "beat_playing"; break;
             case oBeatBpm: n = "Beat Tempo"; sy = "beat_bpm"; break;
+            case oBank: n = "Bank Shown"; sy = "bank"; break;
             }
             std::snprintf(name, sizeof(name), "%s", n); std::snprintf(sym, sizeof(sym), "%s", sy);
         }
@@ -543,6 +545,7 @@ protected:
         case kStatePages:   state.key = "pages";   state.defaultValue = ""; state.label = "Pages shown"; state.hints = kStateIsOnlyForUI; break;
         case kStatePreset:  state.key = "preset";  state.defaultValue = ""; state.label = "Preset name"; state.hints = kStateIsOnlyForUI; break;
         case kStateBeatMode: state.key = "beatmode"; state.defaultValue = "0"; state.label = "Beat handover"; break;
+        case kStateBank:    state.key = "bank";    state.defaultValue = "0"; state.label = "Bank shown"; break;
         default: break;
         }
     }
@@ -570,6 +573,7 @@ protected:
             return;
         }
         if (std::strcmp(key, "beatmode") == 0) { fBeatMode.store(std::max(0, std::min(2, std::atoi(value)))); return; }
+        if (std::strcmp(key, "bank") == 0) { fBank.store(std::max(0, std::min(kNumPages - 1, std::atoi(value)))); return; }
         if (std::strncmp(key, "smp", 3) == 0) {
             const int k = std::atoi(key + 3);
             if (k < 0 || k >= kNumSlots) return;
@@ -611,7 +615,8 @@ protected:
         fKnobSpeed.store(pr.kspeed >= 0 && pr.kspeed <= 2 ? pr.kspeed : 1);
         fKnobJump.store(pr.kjump == 1);          // pickup is the default: a knob waits until it reaches the value
         fKnobCountSet.store(pr.kcount >= 1 && pr.kcount <= 5 ? pr.kcount : 0);
-        fPadFeel.store(pr.padfeel >= 0 && pr.padfeel <= 2 ? pr.padfeel : 0);   // velocity + pressure by default
+        fPadFeel.store(pr.padfeel >= 0 && pr.padfeel <= 2 ? pr.padfeel : 0);
+        fFollow.store(pr.follow == 1);   // velocity + pressure by default
         int kt[kNumJobs];
         parseInts(pr.ktypes.c_str(), kt, kNumJobs, 0);
         for (int j = 0; j < kNumJobs; ++j) fSavedType[j].store(kt[j] >= kKnobAbs && kt[j] <= kKnobRel3 ? kt[j] : 0);
@@ -650,6 +655,7 @@ protected:
         case oBeatReadyHi: { int m = 0; for (int k = 24; k < kNumSlots; ++k) if (fBeatReady[k].load()) m |= 1 << (k - 24); return (float)m; }
         case oBeatPlaying: return (float)fBeatCur;
         case oBeatBpm: return fBeatCur >= 0 ? fBeats[fBeatCur].bpm.load() : 0.f;
+        case oBank: return (float)fBank.load(std::memory_order_relaxed);
         case oKnobTypes: { int m = 0; for (int j = 0; j < kNumJobs; ++j) m |= (fJobDetect[j] & 7) << (3 * j); return (float)m; }
         default: break;
         }
@@ -916,7 +922,7 @@ protected:
 
 private:
     enum { kStateMidiMap = 0, kStateCtl, kStateLearn, kStateAllOff, kStateReorder, kStateAdv, kStateMem, kStateDark, kStateSize,
-           kStatePages, kStatePreset, kStateBeatMode, kStateSmp0, kStateBeat0 = kStateSmp0 + kNumSlots, kStateCount = kStateBeat0 + kNumSlots };
+           kStatePages, kStatePreset, kStateBeatMode, kStateBank, kStateSmp0, kStateBeat0 = kStateSmp0 + kNumSlots, kStateCount = kStateBeat0 + kNumSlots };
 
     void prepareDsp()
     {
@@ -1004,6 +1010,7 @@ private:
         for (int s = 0; s < kNumSlots; ++s) fLatched[s] = fHeld[s] = false;
         for (int m = 0; m < kNumMoves; ++m) fMoveOn[m] = false;
         for (int p = 0; p < kNumPads; ++p) fPadMidi[p] = fPadNote[p] = false;
+        for (int& h : fFollowHeld) h = -1;
         for (int k = 0; k < kNumSlots; ++k) fSmp[k].playing = fSmp[k].fading = false;
         fBeatCur = fBeatOld = fBeatPending = -1;
         fBeatCurData = fBeatOldData = nullptr; fPlayCur.store(nullptr); fPlayOld.store(nullptr);
@@ -1209,7 +1216,7 @@ private:
     int knobCountNow() const
     {
         int m[kNumLearn];
-        for (int i = 0; i < kNumLearn; ++i) m[i] = i >= kLearnKnob0 ? fMap[i].load(std::memory_order_relaxed) : -1;
+        for (int i = 0; i < kNumLearn; ++i) m[i] = isKnobLearn(i) ? fMap[i].load(std::memory_order_relaxed) : -1;
         return knobCount(m, fKnobCountSet.load(std::memory_order_relaxed));
     }
 
@@ -1369,6 +1376,19 @@ private:
     // ---------------------------------------------------------------------------------------------
     // MIDI
 
+    // follow mode: a bank A pad plays the same spot on the bank on screen; its release goes where its press went
+    int followPad(int s, bool press)
+    {
+        if (s >= kPadsPerPage) return s;
+        if (press) {
+            if (fFollowHeld[s] >= 0 && fFollowHeld[s] != s) fPadMidi[fFollowHeld[s]] = false;   // re-pressed on another bank
+            fFollowHeld[s] = fFollow.load(std::memory_order_relaxed) ? fBank.load(std::memory_order_relaxed) * kPadsPerPage + s : s;
+            return fFollowHeld[s];
+        }
+        const int p = fFollowHeld[s] >= 0 ? fFollowHeld[s] : s;
+        fFollowHeld[s] = -1;
+        return p;
+    }
     void padFromMidi(int p, bool now, bool viaNoteMap, int vel = 127)
     {
         if (viaNoteMap) fPadNote[p] = now; else fPadMidi[p] = now;
@@ -1402,7 +1422,10 @@ private:
             if (status == 0xD0) { for (int p = 0; p < kNumPads; ++p) padPressure(p, d1); return; }
             const int code = midiCode(false, ch, d1);
             bool found = false;
-            for (int s = 0; s < kNumPads; ++s) if (map[kLearnPad0 + s] >= 0 && (map[kLearnPad0 + s] & 0x1FFFF) == (code & 0x1FFFF)) { padPressure(s, d2); found = true; }
+            for (int s = 0; s < kNumPads; ++s)
+                if (map[kLearnPad0 + s] >= 0 && (map[kLearnPad0 + s] & 0x1FFFF) == (code & 0x1FFFF)) {
+                    padPressure(s < kPadsPerPage && fFollowHeld[s] >= 0 ? fFollowHeld[s] : s, d2); found = true;
+                }
             if (!found && noteStart >= 0 && d1 >= noteStart && d1 < noteStart + kNumPads)
                 padPressure(notePad(d1 - noteStart, fNoteOrder.load(std::memory_order_relaxed) == 1), d2);
             return;
@@ -1422,7 +1445,7 @@ private:
 
         const int learn = fLearnSlot.load(std::memory_order_relaxed);
         if (learn >= 0) {
-            const bool knobSlot = learn >= kLearnKnob0;
+            const bool knobSlot = isKnobLearn(learn);
             const bool padLike = noteOn || (cc && d2 > 0 && fCcPrev[ch * 128 + d1] == 0);
             if ((knobSlot && cc) || (!knobSlot && padLike)) {
                 const int code = midiCode(cc, ch, d1);
@@ -1431,7 +1454,7 @@ private:
                         if (s != learn && fMap[s].load() == code) {
                             if (code == fLastLearnedCode && (double)(when - fLastLearnedAt) < 1.5 * fFs) {
                                 if (cc) fCcPrev[ch * 128 + d1] = d2;
-                                if (cc && s >= kLearnKnob0) knobModeFor(s - kLearnKnob0, d2);   // learn what kind of knob it is
+                                if (cc && isKnobLearn(s)) knobModeFor(s - kLearnKnob0, d2);   // learn what kind of knob it is
                                 return;
                             }
                             fLearnDup = s; ++fLearnDupSeq;
@@ -1468,8 +1491,10 @@ private:
             const bool isCc = (mc & 0x20000) && (mc & 0xFFF) == (code & 0xFFF) && cc;
             if (!isNote && !isCc) continue;
             handled = true;
-            if (s >= kLearnKnob0) { if (isCc) knobMessage(s - kLearnKnob0, d2, when); continue; }
-            padFromMidi(s, isNote ? noteOn : (d2 > 0), false, d2);
+            if (isKnobLearn(s)) { if (isCc) knobMessage(s - kLearnKnob0, d2, when); continue; }
+            const bool press = isNote ? noteOn : (d2 > 0);
+            if (s >= kLearnBank0) { if (press) fBank.store(s - kLearnBank0); continue; }   // a bank button
+            padFromMidi(followPad(s, press), press, false, d2);
         }
 
         // optional note map: notes in a row from the start note, page by page; a learned pad wins
@@ -1491,6 +1516,9 @@ private:
     std::atomic<bool> fKnobJump { false };
     std::atomic<int> fKnobCountSet { 0 };       // 0 = count the linked knobs
     std::atomic<int> fPadFeel { 0 };
+    std::atomic<bool> fFollow { false };        // bank A's pads play the bank on screen
+    std::atomic<int> fBank { 0 };               // the bank on screen (the UI's tabs, or a learned bank button)
+    int fFollowHeld[kPadsPerPage];              // follow mode: the pad each bank A pad started, so its release finds it
     float fPadAmt[kNumPads] = {}, fLatchAmt[kNumSlots] = {}, fAmtCoef = 0.01f;
     std::atomic<bool> fAllOffReq, fKnobModeDirty { false }, fReorderReq { false }, fLearnGuard;
     std::atomic<int> fReorder[kNumSlots];

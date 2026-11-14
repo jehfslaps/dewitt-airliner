@@ -25,6 +25,7 @@ struct Prefs {
     int kcount = -1;         // knobs on the controller: 0 (or unset) count the linked ones, 1-5 set by hand
     int kgrid = -1;          // knobs on screen: 0 top row 1-4, 1 bottom row 1-4
     int padfeel = -1;        // 0 velocity + pressure (hardware-sampler style), 1 velocity only, 2 full on any touch
+    int follow = -1;         // 1: bank A's pads play the bank on screen (controllers that send the same notes on every bank)
     std::string ktypes;      // each knob's learned type (KnobMode per knob), comma separated
     std::string map;         // MIDI map (16 pads + 16 knob jobs), comma separated
 };

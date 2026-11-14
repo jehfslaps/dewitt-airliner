@@ -186,6 +186,7 @@ bool readPrefs(Prefs& p)
         else if (k == "kcount") p.kcount = std::atoi(v.c_str());
         else if (k == "kgrid") p.kgrid = std::atoi(v.c_str());
         else if (k == "padfeel") p.padfeel = std::atoi(v.c_str());
+        else if (k == "follow") p.follow = std::atoi(v.c_str());
         else if (k == "ktypes") p.ktypes = v;
         else if (k == "map3") { p.map = v; while (!p.map.empty() && (p.map.back() == '\r' || p.map.back() == ' ')) p.map.pop_back(); }
     }
@@ -208,6 +209,7 @@ void writePrefs(const Prefs& update)
     if (update.kcount >= 0) cur.kcount = update.kcount;
     if (update.kgrid >= 0) cur.kgrid = update.kgrid;
     if (update.padfeel >= 0) cur.padfeel = update.padfeel;
+    if (update.follow >= 0) cur.follow = update.follow;
     if (!update.ktypes.empty()) cur.ktypes = update.ktypes;
     if (!update.map.empty()) cur.map = update.map;
     const std::string dir = prefsDir();
@@ -230,6 +232,7 @@ void writePrefs(const Prefs& update)
     if (cur.kcount >= 0) std::fprintf(f, "kcount=%d\n", cur.kcount);
     if (cur.kgrid >= 0) std::fprintf(f, "kgrid=%d\n", cur.kgrid);
     if (cur.padfeel >= 0) std::fprintf(f, "padfeel=%d\n", cur.padfeel);
+    if (cur.follow >= 0) std::fprintf(f, "follow=%d\n", cur.follow);
     if (!cur.ktypes.empty()) std::fprintf(f, "ktypes=%s\n", cur.ktypes.c_str());
     if (!cur.map.empty()) std::fprintf(f, "map3=%s\n", cur.map.c_str());
     std::fclose(f);

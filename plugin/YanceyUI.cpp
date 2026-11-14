@@ -213,12 +213,12 @@ static constexpr float kPanX = 200.f, kPanY = 50.f, kPanW = 680.f, kPanH = 540.f
 enum { kActLearn = 1, kActCancelLearn, kActClear, kActReset, kActNotesOff, kActOrderTop, kActOrderBottom,
        kActLoadSmp, kActRemoveSmp, kActSetup, kActKnobTypeMenu, kActNotesMenu, kActResetSize, kActResetPads, kActFactory,
        kActSavePadPreset, kActLoadPadPresetMenu, kActSaveSet, kActSaveSetAs, kActDeleteSet, kActAddPage, kActRemovePage,
-       kActNote0 = 20, kActKnob0 = 40, kActSpeed0 = 46, kActJump0 = 50, kActGrid0 = 53, kActRenameSet = 57, kActLoadBeat = 58, kActRemoveBeat = 59, kActCollect = 60, kActRelink = 61, kActFeel0 = 62, kActNewPattern = 70, kActKCount0 = 80, kActType0 = 100, kActPadPreset0 = 200, kActSet0 = 300 };
+       kActNote0 = 20, kActKnob0 = 40, kActSpeed0 = 46, kActJump0 = 50, kActGrid0 = 53, kActRenameSet = 57, kActLoadBeat = 58, kActRemoveBeat = 59, kActCollect = 60, kActRelink = 61, kActFeel0 = 62, kActFollow = 65, kActNewPattern = 70, kActKCount0 = 80, kActType0 = 100, kActPadPreset0 = 200, kActSet0 = 300 };
 enum { kMenuPad = 0, kMenuKnob, kMenuType, kMenuLearn, kMenuNotes, kMenuSettings, kMenuKnobType, kMenuPadPresets, kMenuSets };
 
 // the setup card's screens
 enum { kScrHome = 0, kScrHear, kScrBackup, kScrPads, kScrMorePads, kScrKnobs, kScrDone, kScrConfirmPads, kScrConfirmFactory, kScrName,
-       kScrChoose, kScrKeys };
+       kScrChoose, kScrKeys, kScrBankFilled, kScrSameBank };
 
 // the built-in set: the default layout on bank A, banks B and C empty
 enum { kNumFactorySets = 1 };
@@ -335,6 +335,7 @@ public:
         fKnobCountSet = pr.kcount >= 1 && pr.kcount <= 5 ? pr.kcount : 0;
         fKnobGridBottom = pr.kgrid == 1;
         fPadFeel = pr.padfeel >= 0 && pr.padfeel <= 2 ? pr.padfeel : 0;
+        fFollow = pr.follow == 1;
         fNotesT.snap(fNoteStart >= 0 ? 1.f : 0.f);
         fWelcomed = pr.welcomed == 1;
     }
@@ -392,6 +393,9 @@ protected:
             fBeatReadyMask[i == oBeatReadyLo ? 0 : 1] = (int)std::lround(value);
         } else if (i == oBeatPlaying) {
             fBeatPlaying = (int)std::lround(value);
+        } else if (i == oBank) {
+            const int b = (int)std::lround(value);         // a bank button on the controller (or the project's bank)
+            if (b >= 0 && b < kNumPages && b != fPage && !fPanelOpen) { setPagesShown(std::max(pagesShown(), b + 1)); showPage(b); }
         } else if (i == oPicked) {
             fPickedMask = (int)std::lround(value);
         } else if (i == oKnobTypes) {
@@ -413,7 +417,12 @@ protected:
             if (seq != fLearnDupSeq) {
                 const bool first = fLearnDupSeq < 0;
                 fLearnDupSeq = seq;
-                if (!first && fPanelOpen && (fScr == kScrPads || fScr == kScrKnobs)) { fWizDup = (int)std::lround(fParam[oLearnDup]); fWizDupAt = t; }
+                if (!first && fPanelOpen && (fScr == kScrPads || fScr == kScrKnobs)) {
+                    fWizDup = (int)std::lround(fParam[oLearnDup]); fWizDupAt = t;
+                    if (fScr == kScrPads && fBankQuick && fWizDup >= kLearnPad0 && fWizDup < kLearnPad0 + kPadsPerPage) {
+                        fWizDup = -1; cancelLearn(); fScr = kScrSameBank;          // same notes as bank A: no banks to fill
+                    }
+                }
             }
         } else if (i == oMidiLastSeq) {
             const int seq = (int)std::lround(value);
@@ -446,6 +455,7 @@ protected:
                 const int p = (int)std::lround(fParam[oPadHit]);
                 if (!first && p >= 0 && p < kNumPads) {
                     fPadScale[p].x = 0.92f; fPadScale[p].set(1.f);
+                    fWizHitAt[p] = t;
                     if (!fPanelOpen) showPage(p / kPadsPerPage);
                 }
             }
@@ -1092,6 +1102,11 @@ protected:
             beginPath(); roundedRect(x, kTabY, w, kTabH, kTabH * 0.5f);
             fillColor(withAlpha(fDark ? fT.pillFill : fT.text, on ? 1.f : 0.f)); fill();
             strokeColor(fDark ? (on ? fT.outline : fT.frame) : fT.text); strokeWidth(2.5f); stroke();
+            if (fLearning == kLearnBank0 + pg) {                 // learning a button on the controller for this bank
+                const float blink = 0.5f + 0.5f * std::sin((float)now() * 12.566f);
+                beginPath(); roundedRect(x - 3.f, kTabY - 3.f, w + 6.f, kTabH + 6.f, kTabH * 0.5f + 3.f);
+                strokeColor(withAlpha(kAmberAcc, blink)); strokeWidth(3.f); stroke();
+            }
             char lb[4] = { (char)('A' + pg), 0, 0, 0 };
             drawText(fFontHeavy, 12.f, on ? (fDark ? fT.text : fT.bg) : fT.text, x + w * 0.5f, kTabY + kTabH * 0.5f, NanoVG::ALIGN_CENTER | NanoVG::ALIGN_MIDDLE, lb, 0.3f);
         }
@@ -1128,7 +1143,10 @@ protected:
         for (float d = 14.f; d < h - 14.f; d += 10.f) { beginPath(); moveTo(1.5f, 1.5f + d); lineTo(1.5f, 1.5f + d + 5.f); moveTo(1.5f + w, 1.5f + d); lineTo(1.5f + w, 1.5f + d + 5.f); stroke(); }
         char num[12]; std::snprintf(num, sizeof(num), "%02d", q + 1);
         drawText(fFontHeavy, 11.f, withAlpha(fT.text, 0.45f), 12.f, 19.f, NanoVG::ALIGN_LEFT | NanoVG::ALIGN_MIDDLE, num);
-        drawText(fFontHeavy, 22.f, withAlpha(fT.text, 0.35f), kPadW * 0.5f, kPadH * 0.5f + 2.f, NanoVG::ALIGN_CENTER | NanoVG::ALIGN_MIDDLE, "+");
+        // the +: under the mouse it lights up, and a click opens the pad menu right here
+        const bool hov = fPlusHover == q;
+        if (hov) { beginPath(); circle(kPadW * 0.5f, kPadH * 0.5f + 1.f, kPlusR - 3.f); fillColor(withAlpha(fT.text, 0.1f)); fill(); }
+        drawText(fFontHeavy, 22.f, withAlpha(fT.text, hov ? 0.85f : 0.35f), kPadW * 0.5f, kPadH * 0.5f + 2.f, NanoVG::ALIGN_CENTER | NanoVG::ALIGN_MIDDLE, "+");
         drawText(fFontBold, 8.5f, withAlpha(fT.text, 0.4f), kPadW * 0.5f, kPadH - 16.f, NanoVG::ALIGN_CENTER | NanoVG::ALIGN_MIDDLE, "EMPTY", 0.4f);
         restore();
     }
@@ -1671,7 +1689,7 @@ protected:
 
     enum { bNone = 0, bClose, bSetupAgain, bClearAll, bDone, bSkip, bBack, bOutPads, bOutKnobs, bMorePads, bNoMorePads,
            bStartPlaying, bUseBackup, bFresh, bMyself, bCancel, bConfirm, bSaveName, bWinDialog,
-           bPadCtl, bKeyboard, bKeysManual, bKeysAuto, bKeysNext, bKeysRepick };
+           bPadCtl, bKeyboard, bKeysManual, bKeysAuto, bKeysNext, bKeysRepick, bTapAll, bFollowYes };
     struct PanelBtn { float x, y, w, h; int id; const char* label; int style; };   // style 0 plain, 1 amber, 2 red, 3 link, 4 drawn by the screen
 
     int panelButtons(PanelBtn* out) const
@@ -1696,6 +1714,12 @@ protected:
             add(28.f, by + 8.f, 150.f, 22.f, bMyself, "I'll map it myself", 3);
             break;
         case kScrPads:
+            if (fBankQuick) {
+                add(28.f, by, 96.f, 34.f, bBack, "BACK", 0);
+                add(w * 0.5f - 100.f, by, 200.f, 34.f, bTapAll, "TAP ALL 16 MYSELF", 0);
+                add(w - 228.f, by, 200.f, 34.f, bNoMorePads, "DONE WITH PADS", 0);
+                break;
+            }
             add(28.f, by, 96.f, 34.f, bSkip, "SKIP", 0);
             add(134.f, by, 96.f, 34.f, bBack, "BACK", 0);
             add(w - 228.f, by, 200.f, 34.f, bOutPads, fWizStep < kPadsPerPage ? "THAT'S ALL MY PADS" : "DONE WITH PADS", 0);
@@ -1715,6 +1739,16 @@ protected:
                 if (fLearning < 0) add(238.f, by, 200.f, 34.f, bKeysRepick, "CHOOSE ANOTHER KEY", 0);
             }
             if (fLearning < 0 || fKeyManual) add(w - 148.f, by, 120.f, 34.f, bKeysNext, "NEXT", fLearning < 0 ? 1 : 0);
+            break;
+        case kScrBankFilled:
+            add(28.f, by, 200.f, 34.f, bTapAll, "TAP EACH ONE MYSELF", 0);
+            if (fFillPage + 1 < kNumPages) add((228.f + w - 178.f) * 0.5f - 75.f, by, 150.f, 34.f, bMorePads, fFillPage + 1 == 1 ? "ADD BANK B" : "ADD BANK C", 0);
+            add(w - 178.f, by, 150.f, 34.f, bNoMorePads, "ON TO KNOBS", 1);
+            break;
+        case kScrSameBank:
+            add(28.f, by, 96.f, 34.f, bBack, "BACK", 0);
+            add(134.f, by, 180.f, 34.f, bTapAll, "NO, I'LL MAP IT", 0);
+            add(w - 248.f, by, 220.f, 34.f, bFollowYes, "YES, FOLLOW THE BANK", 1);
             break;
         case kScrMorePads:
             add(w * 0.5f - 210.f, 330.f, 200.f, 44.f, bMorePads, fMorePage == 1 ? "ADD BANK B" : "ADD BANK C", 0);
@@ -1817,11 +1851,11 @@ protected:
     }
 
     // the 4 x 4 map of pad positions: one spot lit at a time
-    void wizardGrid(float x0, float y0)
+    void wizardGrid(float x0, float y0, int page = -1)
     {
         const float cw = 72.f, ch = 52.f, g = 8.f;
         const float blink = 0.5f + 0.5f * std::sin((float)now() * 7.f);
-        const int pg = fWizStep >= 0 && fWizStep < kNumPads ? fWizStep / kPadsPerPage : 0;
+        const int pg = page >= 0 ? page : (fWizStep >= 0 && fWizStep < kNumPads ? fWizStep / kPadsPerPage : 0);
         for (int q = 0; q < kPadsPerPage; ++q) {
             const int i = pg * kPadsPerPage + q;
             const float x = x0 + (q % 4) * (cw + g), y = y0 + (q / 4) * (ch + g);
@@ -1836,8 +1870,9 @@ protected:
                 drawText(fFontHeavy, 11.f, hex(0x0A1A33), x + 10.f, y + 15.f, NanoVG::ALIGN_LEFT | NanoVG::ALIGN_MIDDLE, n);
                 drawText(fFontHeavy, 10.f, hex(0x0A1A33), x + cw * 0.5f, y + 35.f, NanoVG::ALIGN_CENTER | NanoVG::ALIGN_MIDDLE, kill ? "KILL" : "PRESS", 0.4f);
             } else if (done) {
+                const float hit = clamp01(1.f - (float)(now() - fWizHitAt[i]) / 0.6f);   // a tap on this pad
                 beginPath(); roundedRect(x, y, cw, ch, 12.f);
-                fillColor(kill ? fT.killTile : fT.card[kColNavy]); fill();
+                fillColor(Color(kill ? fT.killTile : fT.card[kColNavy], kAmberAcc, hit)); fill();
                 const Color c = hex(0xF7F1E3);
                 drawText(fFontHeavy, 11.f, c, x + 10.f, y + 15.f, NanoVG::ALIGN_LEFT | NanoVG::ALIGN_MIDDLE, n);
                 if (kill) drawText(fFontHeavy, 8.f, kAmberAcc, x + cw - 9.f, y + 15.f, NanoVG::ALIGN_RIGHT | NanoVG::ALIGN_MIDDLE, "KILL", 0.4f);
@@ -1963,6 +1998,7 @@ protected:
         if (fWizDup >= 0 && t - fWizDupAt < 3.0) {
             char b[96];
             if (fWizDup < kLearnKnob0) std::snprintf(b, sizeof(b), "That one is already pad %d. Press a different one, or skip.", fWizDup + 1);
+            else if (fWizDup >= kLearnBank0) std::snprintf(b, sizeof(b), "That one switches to bank %c. Press a different one, or skip.", 'A' + fWizDup - kLearnBank0);
             else std::snprintf(b, sizeof(b), "That knob is already knob %d. Turn a different one, or skip.", fWizDup - kLearnKnob0 + 1);
             drawText(fFontBold, 12.f, kRedAcc, kPanW * 0.5f, y, NanoVG::ALIGN_CENTER | NanoVG::ALIGN_MIDDLE, b);
         } else if (fWizLastCode >= 0) {
@@ -2088,6 +2124,18 @@ protected:
             stepper(1);
             statusLine(146.f, true, "Controller connected", false);
             char b[64];
+            if (fBankQuick) {
+                const int pg = fWizStep / kPadsPerPage;
+                char hb[64], s1[96];
+                if (fQuickRef == 0) std::snprintf(hb, sizeof(hb), "Bank %c: press the top-left pad", 'A' + pg);
+                else { char w2[64]; padWhere(pg * kPadsPerPage + fQuickRef, w2, sizeof(w2)); std::snprintf(hb, sizeof(hb), "Bank %c: %c%s", 'A' + pg, std::tolower(w2[0]), w2 + 1); }
+                std::snprintf(s1, sizeof(s1), "Switch your controller to bank %c and press that pad. Dewitt fills in the rest to match bank A.", 'A' + pg);
+                drawText(fFontHeavy, 20.f, ink, cx, 186.f, NanoVG::ALIGN_CENTER | NanoVG::ALIGN_MIDDLE, hb, 0.1f);
+                drawText(fFontMed, 12.f, soft, cx, 208.f, NanoVG::ALIGN_CENTER | NanoVG::ALIGN_MIDDLE, s1);
+                wizardGrid(cx - 156.f, 226.f);
+                wizardFeedback(474.f);
+                break;
+            }
             drawText(fFontHeavy, 20.f, ink, cx, 186.f, NanoVG::ALIGN_CENTER | NanoVG::ALIGN_MIDDLE, padWhere(fWizStep, b, sizeof(b)), 0.1f);
             const char* sub = fWizStep == kKillPad ? "Any pad or button you like. Holding it mutes everything."
                             : (fWizStep >= kPadsPerPage ? "Switch to your controller's next pad bank, or tap pads on another controller."
@@ -2096,6 +2144,37 @@ protected:
             drawText(fFontMed, 12.f, soft, cx, 208.f, NanoVG::ALIGN_CENTER | NanoVG::ALIGN_MIDDLE, sub);
             wizardGrid(cx - 156.f, 226.f);
             wizardFeedback(474.f);
+            break;
+        }
+        case kScrBankFilled: {
+            stepper(1);
+            char b[64]; std::snprintf(b, sizeof(b), "%d pads mapped", mappedPads());
+            statusLine(146.f, true, b, false);
+            char hb[48]; std::snprintf(hb, sizeof(hb), "Bank %c is filled in", 'A' + fFillPage);
+            drawText(fFontHeavy, 20.f, ink, cx, 186.f, NanoVG::ALIGN_CENTER | NanoVG::ALIGN_MIDDLE, hb, 0.1f);
+            drawText(fFontMed, 12.f, soft, cx, 208.f, NanoVG::ALIGN_CENTER | NanoVG::ALIGN_MIDDLE, fFillText);
+            wizardGrid(cx - 156.f, 226.f, fFillPage);
+            drawText(fFontBold, 12.f, fDark ? kAmberAcc : hex(0x56611A), cx, 471.f, NanoVG::ALIGN_CENTER | NanoVG::ALIGN_MIDDLE, "Tap a few pads on your controller to check: they light up here.");
+            break;
+        }
+        case kScrSameBank: {
+            stepper(1);
+            statusLine(146.f, true, "Bank A is mapped", false);
+            char hb[48]; std::snprintf(hb, sizeof(hb), "That's the same as pad A%d", fQuickRef + 1);
+            drawText(fFontHeavy, 20.f, ink, cx, 196.f, NanoVG::ALIGN_CENTER | NanoVG::ALIGN_MIDDLE, hb, 0.1f);
+            drawText(fFontMed, 13.f, soft, cx, 230.f, NanoVG::ALIGN_CENTER | NanoVG::ALIGN_MIDDLE, "Your controller sends the same notes on every bank (or has no bank button).");
+            drawText(fFontMed, 13.f, soft, cx, 250.f, NanoVG::ALIGN_CENTER | NanoVG::ALIGN_MIDDLE, "Let bank A's pads play whichever bank is showing in Dewitt instead?");
+            const float tw = 70.f, tx = cx - (3.f * tw + 2.f * 12.f) * 0.5f;
+            for (int pg = 0; pg < kNumPages; ++pg) {
+                const float x = tx + pg * (tw + 12.f), y = 290.f;
+                beginPath(); roundedRect(x, y, tw, 46.f, 12.f);
+                if (pg == 0) { fillColor(fT.card[kColNavy]); fill(); }
+                strokeColor(pg == 0 ? fT.card[kColNavy] : withAlpha(ink, 0.5f)); strokeWidth(2.f); stroke();
+                char lb[2] = { (char)('A' + pg), 0 };
+                drawText(fFontHeavy, 14.f, pg == 0 ? hex(0xF7F1E3) : withAlpha(ink, 0.6f), x + tw * 0.5f, y + 23.f, NanoVG::ALIGN_CENTER | NanoVG::ALIGN_MIDDLE, lb);
+            }
+            drawText(fFontMed, 12.f, soft, cx, 372.f, NanoVG::ALIGN_CENTER | NanoVG::ALIGN_MIDDLE, "Switch banks with Dewitt's A / B / C buttons,");
+            drawText(fFontMed, 12.f, soft, cx, 390.f, NanoVG::ALIGN_CENTER | NanoVG::ALIGN_MIDDLE, "or right-click them to learn a button on your controller.");
             break;
         }
         case kScrMorePads: {
@@ -2318,6 +2397,10 @@ protected:
         menuBegin(kMenuLearn, learnSlot, x, y, 240.f);
         fMenuSlot = s;
         formatMidiCode(fMap[learnSlot], fMenuHeader, sizeof(fMenuHeader));
+        if (learnSlot >= kLearnBank0) {                 // a bank tab: the button that shows this bank
+            char m[64]; std::snprintf(m, sizeof(m), "%s", fMenuHeader);
+            std::snprintf(fMenuHeader, sizeof(fMenuHeader), "Bank %c button: %s", 'A' + learnSlot - kLearnBank0, m);
+        }
         menuAdd(fLearning == learnSlot ? "Cancel MIDI learn" : "MIDI learn", fLearning == learnSlot ? kActCancelLearn : kActLearn);
         if (fMap[learnSlot] >= 0) menuAdd("Clear MIDI mapping", kActClear);
         if (s >= 0) {
@@ -2454,6 +2537,9 @@ protected:
         menuAdd("PAD FEEL", 0, true);
         static const char* const feel[3] = { "Velocity + pressure", "Velocity only", "Full on any touch" };
         for (int f = 0; f < 3; ++f) { if (f == fPadFeel) fMenuChecked = fMenuCount; menuAdd(feel[f], kActFeel0 + f); }
+        menuAdd("BANKS", 0, true);
+        if (fFollow) fMenuChecked2 = fMenuCount;
+        menuAdd("Bank A's pads play the bank on screen", kActFollow);
         menuAdd("WINDOW", 0, true);
         menuAdd("Reset window size", kActResetSize);
         menuAdd("RESET", 0, true);
@@ -2506,6 +2592,7 @@ protected:
         if (act >= kActType0) { setSlotType(target, act - kActType0); return; }
         if (act >= kActKnob0 && act < kActKnob0 + kNumKnobModes) { setKnobMode(act - kActKnob0); return; }
         if (act >= kActSpeed0 && act < kActSpeed0 + 3) { fKnobSpeed = act - kActSpeed0; Prefs up; up.kspeed = fKnobSpeed; writePrefs(up); bumpController(); return; }
+        if (act == kActFollow) { setFollow(!fFollow); return; }
         if (act >= kActFeel0 && act < kActFeel0 + 3) { fPadFeel = act - kActFeel0; Prefs up; up.padfeel = fPadFeel; writePrefs(up); bumpController(); wake(); return; }
         if (act >= kActKCount0 && act < kActKCount0 + 6) { fKnobCountSet = act - kActKCount0; Prefs up; up.kcount = fKnobCountSet; writePrefs(up); bumpController(); wake(); return; }
         if (act >= kActGrid0 && act < kActGrid0 + 2) { fKnobGridBottom = act == kActGrid0 + 1; Prefs up; up.kgrid = fKnobGridBottom ? 1 : 0; writePrefs(up); wake(); return; }
@@ -2594,6 +2681,9 @@ protected:
             }
             if (hitChip(mx, my, k)) { openLearnMenu(kLearnKnob0 + k, -1, mx, my); return true; }
             if (hitKnob(mx, my, param)) { openKnobMenu(param, mx, my); return true; }
+            if (my >= kTabY && my <= kTabY + kTabH)
+                for (int pg = 0; pg < pagesShown(); ++pg)
+                    if (mx >= pageTabX(pg) && mx <= pageTabX(pg) + 44.f) { openLearnMenu(kLearnBank0 + pg, -1, mx, my); return true; }
             return false;
         }
         if (ev.button != kMouseButtonLeft) return false;
@@ -2637,6 +2727,7 @@ protected:
                 if (s < 0) { pressPadParam(kKillPad); fPadScale[kKillPad].set(0.95f); fPressedVisual = kKillPad; return true; }
                 const float px = fPadPX[q].x, py = fPadPY[q].x;
                 if (inCircle(mx - px, my - py, kPadW - 19.f, 19.f, 13.f)) { selectSlot(s); openTypeMenu(s, px + kPadW - 30.f, py + 32.f, false); return true; }
+                if (onEmptyPlus(s, px, py, mx, my)) { fPlusHover = -1; selectSlot(s); openTypeMenu(s, px + kPadW * 0.5f, py + kPadH * 0.5f, false); return true; }
                 selectSlot(s);
                 fDragPos = q; fPadDragging = false;
                 fDragStartX = mx; fDragStartY2 = my;
@@ -2733,7 +2824,16 @@ protected:
             }
             return true;
         }
+        int hq = -1, q;
+        if (!fPanelOpen && hitGridPad(mx, my, q)) { const int s = slotAtGrid(q); if (onEmptyPlus(s, fPadPX[q].x, fPadPY[q].x, mx, my)) hq = posDisplay(q); }
+        if (hq != fPlusHover) { fPlusHover = hq; wake(); }
         return false;
+    }
+    // the + in the middle of an empty pad (bank B and C)
+    static constexpr float kPlusR = 20.f;
+    bool onEmptyPlus(int s, float px, float py, float mx, float my) const
+    {
+        return s >= 0 && kindOf(s) == 4 && inCircle(mx - px, my - py, kPadW * 0.5f, kPadH * 0.5f + 1.f, kPlusR);
     }
 
     bool onScroll(const ScrollEvent& ev) override
@@ -2872,6 +2972,8 @@ protected:
                 else wizardTo(fWizStep + 1);
                 break;
             case bBack: {
+                if (fScr == kScrSameBank) { fScr = kScrPads; wizardTo(fFillPage * kPadsPerPage + fQuickRef); break; }
+                if (fScr == kScrPads && fBankQuick) { fMorePage = fWizStep / kPadsPerPage; cancelLearn(); fScr = kScrMorePads; fWizStep = -1; fBankQuick = false; break; }
                 if (fScr == kScrKeys) {
                     fWizStep = std::max(fKeyPage * kPadsPerPage, fWizStep - 1);
                     startLearn(fWizStep, false);
@@ -2882,13 +2984,26 @@ protected:
                 break;
             }
             case bOutPads: endOfPadPage(true); break;
+            case bTapAll: {                     // map this bank pad by pad after all
+                const int pg = (fScr == kScrBankFilled || fScr == kScrSameBank) ? fFillPage : std::max(1, fWizStep / kPadsPerPage);
+                fBankQuick = false; fScr = kScrPads; fWizLastCode = -1;
+                fWizStep = pg * kPadsPerPage;
+                wizardTo(pg * kPadsPerPage);
+                break;
+            }
+            case bFollowYes: setFollow(true); startKnobs(); break;
             case bMorePads: {
+                if (fScr == kScrBankFilled) fMorePage = fFillPage + 1;
                 const int pg = fMorePage;
                 if (fKeyMode) { startKeys(pg); break; }
                 fScr = kScrPads; fWizLastCode = -1;
                 setPagesShown(std::max(pagesShown(), pg + 1));
-                fWizStep = pg * kPadsPerPage;          // the walkthrough is now on this page
-                wizardTo(pg * kPadsPerPage);
+                // with bank A mapped, one press fills the bank: ask for the pad at bank A's first mapped spot
+                int ref = -1;
+                for (int q = 0; q < kPadsPerPage && ref < 0; ++q) if (fMap[kLearnPad0 + q] >= 0) ref = q;
+                fBankQuick = ref >= 0; fQuickRef = std::max(0, ref); fFillPage = pg;
+                fWizStep = pg * kPadsPerPage + fQuickRef;          // the walkthrough is now on this page
+                wizardTo(pg * kPadsPerPage + fQuickRef);
                 break;
             }
             case bNoMorePads: startKnobs(); break;
@@ -3006,6 +3121,7 @@ protected:
         pg = std::max(0, std::min(kNumPages - 1, pg));
         if (pg == fPage) return;
         fPage = pg;
+        if (fFollow || bankButtonsMapped()) sendBank();          // the plug-in plays (or reports) this bank
         for (int q = 0; q < kPadsPerPage; ++q) { fPosSlot[q] = q; fPadPX[q].snap(padX(q)); fPadPY[q].snap(padY(q)); }
         if (pageOfSlot(fSel) != pg) selectSlot(slotOfPad(pg * kPadsPerPage + (pg == 0 ? 2 : 0)));
         wake();
@@ -3092,6 +3208,13 @@ protected:
             sendMidiMap(false);
             if (slot < kNumPads) { fPadScale[slot].x = 0.9f; fPadScale[slot].set(1.f); }
         }
+        if (fPanelOpen && fScr == kScrPads && fBankQuick && slot == fWizStep) {
+            fWizLastCode = code; fWizDup = -1;
+            if (fillBank(slot / kPadsPerPage, code)) { cancelLearn(); fWizStep = -1; fScr = kScrBankFilled; return; }
+            fBankQuick = false;                     // couldn't match bank A: carry on pad by pad from here
+            fWizStep = slot - fQuickRef; wizardTo(slot - fQuickRef + (fQuickRef == 0 ? 1 : 0));
+            return;
+        }
         if (fPanelOpen && (fScr == kScrPads || fScr == kScrKnobs) && slot == fWizStep) {
             fWizLastCode = code; fWizDup = -1;
             wizardTo(fWizStep + 1);
@@ -3164,8 +3287,8 @@ protected:
         else startKnobs();
     }
     void startHear() { fScr = kScrHear; fHeardAt = 0.0; fHearSeq0 = fMidiSeq; fHearStart = now(); fPanelOpen = true; }
-    void startPads(int step) { fScr = kScrPads; fWizLastCode = -1; fWizDup = -1; showPage(0); wizardTo(step); }
-    void startKnobs() { fScr = kScrKnobs; fWizLastCode = -1; wizardTo(kLearnKnob0); }
+    void startPads(int step) { fScr = kScrPads; fBankQuick = false; fWizLastCode = -1; fWizDup = -1; showPage(0); wizardTo(step); }
+    void startKnobs() { fScr = kScrKnobs; fBankQuick = false; fWizLastCode = -1; wizardTo(kLearnKnob0); }
     // a page of pads is finished (or the user has run out of pads on it)
     void endOfPadPage(bool early)
     {
@@ -3182,7 +3305,7 @@ protected:
             const int pg = fWizStep >= 0 ? fWizStep / kPadsPerPage : 0;
             if (step >= (pg + 1) * kPadsPerPage) { fWizStep = step - 1; endOfPadPage(false); return; }
         }
-        if (fScr == kScrKnobs && step >= kNumLearn) { finishSetup(); return; }
+        if (fScr == kScrKnobs && step >= kLearnBank0) { finishSetup(); return; }
         fWizStep = step;
         if (fScr == kScrPads && step < kNumPads) {
             if (step / kPadsPerPage != fPage) showPage(step / kPadsPerPage);
@@ -3197,7 +3320,8 @@ protected:
         fBpmEdit = -1;
         if (fLearning >= 0) cancelLearn();
         if (fScr == kScrHear || fScr == kScrBackup || fScr == kScrPads || fScr == kScrMorePads || fScr == kScrKnobs
-            || fScr == kScrChoose || fScr == kScrKeys) { sendMidiMap(); markWelcomed(); }
+            || fScr == kScrChoose || fScr == kScrKeys || fScr == kScrBankFilled || fScr == kScrSameBank) { sendMidiMap(); markWelcomed(); }
+        fBankQuick = false;
         fWizStep = -1;
         fNaming = false;
         fPanelOpen = false;
@@ -3527,6 +3651,36 @@ protected:
     }
 
     // the map is this computer's controller setup; the project keeps a copy only as a backup
+    // bank B or C from bank A, from the one pad just pressed (see bankFromA)
+    bool fillBank(int pg, int code)
+    {
+        int out[kPadsPerPage], dCh = 0, dNum = 0;
+        if (!bankFromA(fMap, pg, fQuickRef, code, out, dCh, dNum)) return false;
+        for (int q = 0; q < kPadsPerPage; ++q) fMap[kLearnPad0 + pg * kPadsPerPage + q] = out[q];
+        fFillPage = pg;
+        int lo = 128, hi = -1;
+        for (int q = 0; q < kPadsPerPage; ++q) if (out[q] >= 0) { lo = std::min(lo, out[q] & 0x7f); hi = std::max(hi, out[q] & 0x7f); }
+        const bool cc = (code & 0x20000) != 0;
+        const char* what = cc ? "controls" : "notes";
+        const char bank = (char)('A' + pg);
+        if (dCh == 0) std::snprintf(fFillText, sizeof(fFillText), "Your bank %c is bank A, %d %s %s (%s %d-%d).", bank, std::abs(dNum), dNum == 1 || dNum == -1 ? (cc ? "control" : "note") : what, dNum > 0 ? "higher" : "lower", cc ? "CC" : "notes", lo, hi);
+        else if (dNum == 0) std::snprintf(fFillText, sizeof(fFillText), "Your bank %c is bank A on MIDI channel %d.", bank, ((code >> 8) & 15) + 1);
+        else std::snprintf(fFillText, sizeof(fFillText), "Your bank %c is bank A on MIDI channel %d, %d %s %s.", bank, ((code >> 8) & 15) + 1, std::abs(dNum), what, dNum > 0 ? "higher" : "lower");
+        sendMidiMap();                     // the plug-in learned only the one pad: send it the whole bank
+        return true;
+    }
+    // bank A's pads play the bank on screen (controllers that send the same notes on every bank)
+    void setFollow(bool on)
+    {
+        fFollow = on;
+        Prefs up; up.follow = on ? 1 : 0; writePrefs(up);
+        sendBank();
+        bumpController();
+        wake();
+    }
+    bool bankButtonsMapped() const { for (int b = 0; b < kNumPages; ++b) if (fMap[kLearnBank0 + b] >= 0) return true; return false; }
+    void sendBank() { char b[4]; std::snprintf(b, sizeof(b), "%d", fPage); setState("bank", b); }
+
     void sendMidiMap(bool reload = true)
     {
         std::string buf; char b[16];
@@ -3888,6 +4042,12 @@ protected:
     FontId fFontTitle = -1, fFontHeavy = -1, fFontBold = -1, fFontMed = -1;
     Theme fT, fTL, fTD;
     bool fDark = false;
+    int fPlusHover = -1;
+    bool fFollow = false;     // bank A's pads play the bank on screen
+    bool fBankQuick = false;  // setup: the next bank comes from one press
+    int fQuickRef = 0, fFillPage = 1;
+    char fFillText[128] = {};
+    double fWizHitAt[kNumPads] = {};      // the empty pad (by its number on the page, 0-15) whose + is under the mouse
     float fSavedScale = 0.f;
 
     float fParam[kParamCount];
