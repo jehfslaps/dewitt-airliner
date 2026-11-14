@@ -11,3 +11,4 @@ dist/
 .DS_Store
 __pycache__/
 docs/midi-setup/html/
+docs/manual/manual.html
