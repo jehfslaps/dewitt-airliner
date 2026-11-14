@@ -10,3 +10,4 @@ dist/
 *.o
 .DS_Store
 __pycache__/
+docs/midi-setup/html/

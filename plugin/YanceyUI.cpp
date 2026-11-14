@@ -1,6 +1,7 @@
 // Yancey: user interface (look and feel carried over from Dewitt).
 #include "DistrhoUI.hpp"
 #include "YanceyParams.hpp"
+#include "YanceySets.hpp"
 #include "FontData.hpp"
 #include "YanceyPlatform.hpp"
 #include "YanceySamples.hpp"
@@ -221,8 +222,7 @@ enum { kScrHome = 0, kScrHear, kScrBackup, kScrPads, kScrMorePads, kScrKnobs, kS
        kScrChoose, kScrKeys, kScrBankFilled, kScrSameBank };
 
 // the built-in set: the default layout on bank A, banks B and C empty
-enum { kNumFactorySets = 1 };
-static const char* const kFactorySetNames[kNumFactorySets] = { "Default" };
+// the built-in sets: Default, then the groups in YanceySets.hpp
 #ifdef _WIN32
 static const char* const kPathSep = "\\";
 #else
@@ -1325,8 +1325,12 @@ protected:
             const int m = kind == 1 ? moveAt(s) : -1;
             wrap2(learning ? "LEARN" : (kind == 0 ? kEffects[effectAt(s)].name : kMoveNames[m]), w - 18.f, a, b);
             const bool latch = latchOf(fParam, s);
-            if (kind == 0) std::snprintf(sub, sizeof(sub), "%s%s", latch ? "LATCH" : "HOLD",
-                                         kEffects[effectAt(s)].tail && fParam[slotParam(s, F_REL)] > 0.5f ? " \xC2\xB7 RING" : "");
+            if (kind == 0) {
+                const std::string v = padVariant(s);
+                if (!v.empty()) std::snprintf(sub, sizeof(sub), "%s%s", latch ? "LATCH \xC2\xB7 " : "", v.c_str());
+                else std::snprintf(sub, sizeof(sub), "%s%s", latch ? "LATCH" : "HOLD",
+                                   kEffects[effectAt(s)].tail && fParam[slotParam(s, F_REL)] > 0.5f ? " \xC2\xB7 RING" : "");
+            }
             else std::snprintf(sub, sizeof(sub), "MOVE \xC2\xB7 %s", !moveIsHold(m) ? "TAP" : (latch ? "LATCH" : "HOLD"));
         }
         if (b.empty()) drawText(fFontHeavy, 10.5f, ink, 10.f, 58.f, NanoVG::ALIGN_LEFT | NanoVG::ALIGN_MIDDLE, a.c_str(), 0.15f);
@@ -1343,7 +1347,8 @@ protected:
             beginPath(); roundedRect(10.f, 72.f, w - 20.f, 4.f, 2.f); fillColor(withAlpha(ink, 0.18f)); fill();
             beginPath(); roundedRect(10.f, 72.f, std::max(4.f, (w - 20.f) * clamp01(ph)), 4.f, 2.f); fillColor(ink); fill();
         } else {
-            drawText(fFontBold, 8.5f, kind == 2 ? fT.tileSub : withAlpha(ink, 0.85f), 10.f, 75.f, NanoVG::ALIGN_LEFT | NanoVG::ALIGN_MIDDLE, sub, 0.3f);
+            drawText(fFontBold, 8.5f, kind == 2 ? fT.tileSub : withAlpha(ink, 0.85f), 10.f, 75.f, NanoVG::ALIGN_LEFT | NanoVG::ALIGN_MIDDLE,
+                     fitText(fFontBold, 8.5f, sub, w - 18.f, 0.3f).c_str(), 0.3f);
             if (ph >= 0.f) {
                 beginPath(); roundedRect(10.f, h - 8.f, w - 20.f, 3.f, 1.5f); fillColor(withAlpha(ink, 0.2f)); fill();
                 beginPath(); roundedRect(10.f, h - 8.f, std::max(3.f, (w - 20.f) * clamp01(ph)), 3.f, 1.5f); fillColor(ink); fill();
@@ -2480,17 +2485,24 @@ protected:
     void openSetsMenu()
     {
         refreshSetList();
-        menuBegin(kMenuSets, 0, kPresetX, kPresetY + kPresetH + 6.f, std::max(kPresetW, 260.f));
+        menuBegin(kMenuSets, 0, kPresetX - 120.f, kPresetY + kPresetH + 6.f, 3.f * 220.f);
         menuAdd("BUILT IN", 0, true);
-        for (int i = 0; i < kNumFactorySets; ++i) {
-            if (!fPresetUser && std::strcmp(fPresetName, kFactorySetNames[i]) == 0) fMenuChecked = fMenuCount;
-            menuAdd(kFactorySetNames[i], kActSet0 + i);
+        const char* group = "";
+        for (int i = 0; i < numFactorySets(); ++i) {
+            if (std::strcmp(factorySetGroup(i), group) != 0) {               // a new group: a heading, two groups a column
+                group = factorySetGroup(i);
+                if (std::strcmp(group, "CLUB") == 0) menuNextColumn();
+                menuAdd(group, 0, true);
+            }
+            if (!fPresetUser && std::strcmp(fPresetName, factorySetName(i)) == 0) fMenuChecked = fMenuCount;
+            menuAdd(factorySetName(i), kActSet0 + i);
         }
+        menuNextColumn();
         if (!fUserSets.empty()) {
             menuAdd("YOUR SETS", 0, true);
-            for (size_t i = 0; i < fUserSets.size() && i < 24; ++i) {
+            for (size_t i = 0; i < fUserSets.size() && i < 12; ++i) {
                 if (fPresetUser && fUserSets[i] == fPresetName) fMenuChecked = fMenuCount;
-                menuAdd(fUserSets[i].c_str(), kActSet0 + kNumFactorySets + (int)i);
+                menuAdd(fUserSets[i].c_str(), kActSet0 + numFactorySets() + (int)i);
             }
         }
         menuAdd("SAVE", 0, true);
@@ -3569,7 +3581,7 @@ protected:
         applyParams(vals);
         for (int s = 0; s < kNumSlots; ++s) { if (fSmpLoaded[s]) removeSample(s); if (fBeatHas[s]) setBeatState(s, nullptr); for (int e = 0; e < kNumEffects; ++e) fMemValid[s][e] = false; }
         sendMem();
-        std::snprintf(fPresetName, sizeof(fPresetName), "%s", kFactorySetNames[0]);
+        std::snprintf(fPresetName, sizeof(fPresetName), "%s", factorySetName(0));
         fPresetUser = false; fPresetDirty = false;
         setState("preset", fPresetName);
         wake();
@@ -3681,6 +3693,45 @@ protected:
     bool bankButtonsMapped() const { for (int b = 0; b < kNumPages; ++b) if (fMap[kLearnBank0 + b] >= 0) return true; return false; }
     void sendBank() { char b[4]; std::snprintf(b, sizeof(b), "%d", fPage); setState("bank", b); }
 
+    // when the same effect is on more than one pad of a bank, what tells them apart (e.g. Loop Grab "1/16"):
+    // the knobs that differ between them, choices (lengths, types, modes) first, at most two
+    std::string padVariant(int s) const
+    {
+        const int e = effectAt(s);
+        if (e < 0) return std::string();
+        const int pg = s / kPadsPerPage;
+        bool vary[kKnobsPerSlot] = {}, dup = false;
+        for (int o = pg * kPadsPerPage; o < (pg + 1) * kPadsPerPage; ++o) {
+            if (o == s || effectOf(fParam, o) != e) continue;
+            dup = true;
+            for (int k = 0; k < numControls(e); ++k)
+                if (std::fabs(fParam[slotParam(o, F_K1 + k)] - fParam[slotParam(s, F_K1 + k)]) > 1e-3f) vary[k] = true;
+        }
+        if (!dup) return std::string();
+        std::string out; int n = 0;
+        if (e == kFxIsolator) {                    // the bands it changes: "LOW KILL", "HIGH -6.0 DB"
+            for (int k = 0; k < 3; ++k) {
+                const float v = fParam[slotParam(s, F_K1 + k)];
+                if (std::fabs(v - 0.5f) < 1e-3f) continue;
+                char b[32]; formatFmt(fBipolarDb, v, b, sizeof(b));
+                std::string t = std::string(kEffects[e].c[k].label) + " " + b;
+                for (char& ch : t) ch = (char)std::toupper((unsigned char)ch);
+                out += (n++ ? " " : "") + t;
+            }
+            return out;
+        }
+        for (int pass = 0; pass < 2 && n < 2; ++pass)
+            for (int k = 0; k < numControls(e) && n < 2; ++k) {
+                const CtlSpec& c = kEffects[e].c[k];
+                if (!vary[k] || (pass == 0) != (c.scale == kInt)) continue;
+                char b[32]; formatFmt(c.fmt, ctlFromNorm(c, fParam[slotParam(s, F_K1 + k)]), b, sizeof(b));
+                std::string t = c.fmt == fBipolarDb ? std::string(c.label) + " " + b : std::string(b);   // isolator: "LOW KILL"
+                for (char& ch : t) ch = (char)std::toupper((unsigned char)ch);
+                out += (n ? " " : "") + t; ++n;
+            }
+        return out;
+    }
+
     void sendMidiMap(bool reload = true)
     {
         std::string buf; char b[16];
@@ -3762,11 +3813,8 @@ protected:
 
     // ------------------------------------------------------------------------------ presets
 
-    // the built-in set: the default layout (see kDefaultTypes)
-    void factoryParams(int, float* vals) const
-    {
-        for (int i = 0; i < kNumSlots * kSlotFields; ++i) vals[i] = paramDefault(i);
-    }
+    // a built-in set (YanceySets.hpp; 0 = Default, the layout in kDefaultTypes); returns the banks it uses
+    int factoryParams(int i, float* vals) const { return factorySetParams(i, vals); }
 
     void refreshSetList() { listFiles(presetsDir("Sets").c_str(), ".yset", fUserSets); }
 
@@ -3835,18 +3883,20 @@ protected:
 
     void loadSetByIndex(int i)
     {
-        if (i < kNumFactorySets) {
+        if (i < numFactorySets()) {
             pushUndo();
             allOff();
             float vals[kNumSlots * kSlotFields];
-            factoryParams(i, vals);
+            const int banks = factoryParams(i, vals);
             applyParams(vals);
             for (int s = 0; s < kNumSlots; ++s) { if (fSmpLoaded[s]) removeSample(s); if (fBeatHas[s]) setBeatState(s, nullptr); }
-            setPresetName(kFactorySetNames[i], false);
+            if (banks > pagesShown()) setPagesShown(banks);
+            showPage(0);
+            setPresetName(factorySetName(i), false);
             wake();
             return;
         }
-        const size_t u = (size_t)(i - kNumFactorySets);
+        const size_t u = (size_t)(i - numFactorySets());
         if (u >= fUserSets.size()) return;
         std::vector<uint8_t> bytes;
         const std::string path = presetsDir("Sets") + kPathSep + fUserSets[u] + ".yset";
@@ -3858,10 +3908,10 @@ protected:
     void stepSet(int dir)
     {
         refreshSetList();
-        const int total = kNumFactorySets + (int)fUserSets.size();
+        const int total = numFactorySets() + (int)fUserSets.size();
         int cur = -1;
-        if (!fPresetUser) { for (int i = 0; i < kNumFactorySets; ++i) if (std::strcmp(fPresetName, kFactorySetNames[i]) == 0) cur = i; }
-        else for (size_t i = 0; i < fUserSets.size(); ++i) if (fUserSets[i] == fPresetName) cur = kNumFactorySets + (int)i;
+        if (!fPresetUser) { for (int i = 0; i < numFactorySets(); ++i) if (std::strcmp(fPresetName, factorySetName(i)) == 0) cur = i; }
+        else for (size_t i = 0; i < fUserSets.size(); ++i) if (fUserSets[i] == fPresetName) cur = numFactorySets() + (int)i;
         loadSetByIndex(((cur < 0 ? 0 : cur + dir) % total + total) % total);
     }
 

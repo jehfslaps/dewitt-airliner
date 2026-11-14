@@ -121,6 +121,9 @@ runcheck Dewitt    wtest    Dewitt.clap    96000
 $CXX $N -Iplugin test/foldtest.cpp -o build-tests/foldtest
 build-tests/foldtest > dist/logs/checks-foldtest.txt 2>&1 || true
 echo "Knob folding: $(grep -c '^ok' dist/logs/checks-foldtest.txt) ok, $(tail -1 dist/logs/checks-foldtest.txt)"
+$CXX $N test/settest.cpp -o build-tests/settest
+build-tests/settest > dist/logs/checks-sets.txt 2>&1 || FAILED=1
+echo "Built-in sets: $(tail -1 dist/logs/checks-sets.txt)"
 grep '^FAIL' dist/logs/checks-foldtest.txt && FAILED=1 || true
 
 AFL="-std=gnu++17 -O2 -ffast-math -fno-finite-math-only -Idpf/distrho/src -Iplugin"
