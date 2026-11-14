@@ -161,6 +161,7 @@ static const char* const kEffectDesc[kNumEffects] = {
     "Turns steps of the beat into quick 1/32 rolls. The knob sets how many steps roll; the same ones every bar.",
     "Plays steps of the beat backwards, swelling into the next one. The knob sets how many; the same ones every bar.",
     "Warm saturation, from light grit to heavy crunch. The level comes down as it gets heavier.",
+    "Hold to cut the beat and smear it into a giant hanging reverb. Let go: the beat's back and the smear rings out.",
 };
 
 static const char* const kMoveDesc[kNumMoves] = {

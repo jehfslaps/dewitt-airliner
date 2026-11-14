@@ -44,7 +44,7 @@ toc = [("01", "Install", "Windows and Mac, and finding Dewitt in your DAW"),
        ("03", "The screen", "Every control, numbered"),
        ("04", "Pads and banks", "Hold, latch, stacking, the + on empty pads, banks A B C"),
        ("05", "Your controller", "The setup, banks in one press, knobs, notes, bank buttons"),
-       ("06", "Effects", "All 38, with their knobs"),
+       ("06", "Effects", f"All {len(data['effects'])}, with their knobs"),
        ("07", "Moves", "Kill, Throw, Freeze, Grab and friends"),
        ("08", "Samples and beats", "One-shots and loops on a pad"),
        ("09", "Sets", "The 16 built-in sets, your own sets, pad presets"),
@@ -207,7 +207,7 @@ page("05 · your controller", "05 / your controller", """
 
 # ------------------------------------------------------------------ 06 effects
 fam_title = {"TIME": "Time: loops, chops and speed", "FILTER": "Filters", "MOD": "Modulation", "TEXTURE": "Colour", "SPACE": "Space: echoes and reverbs"}
-fam_note = {"TIME": "These change when and how the beat plays.", "FILTER": "", "MOD": "", "TEXTURE": "", "SPACE": "Echoes and reverbs have ON RELEASE: CUT or RING OUT."}
+fam_note = {"TIME": "These change when and how the beat plays.", "FILTER": "", "MOD": "", "TEXTURE": "", "SPACE": "Echoes and reverbs have ON RELEASE: CUT or RING OUT. SMEAR always rings out."}
 cards = {f: [] for f in fam_title}
 for fx in data["effects"]:
     knobs = " · ".join(f'<b>{e(k["label"])}</b> {e(k["def"])}' for k in fx["knobs"])

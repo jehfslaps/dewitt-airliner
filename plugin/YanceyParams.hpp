@@ -26,6 +26,8 @@ enum EffectId {
     kNumLegacyEffects,
     // the Valens effects (from Jehf's Valens plug-in): one knob each, 0-100
     kFxStutterV = kNumLegacyEffects, kFxReverseV, kFxDistortionV,
+    // added in 1.2
+    kFxSmear,
     kNumEffects
 };
 
@@ -35,7 +37,7 @@ static const int kChainOrder[kNumEffects] = {
     kFxFilterDrive, kFxIsolator, kFxLpf, kFxHpf, kFxBpf,
     kFxChorus, kFxChorusY, kFxFlanger, kFxFlangerY, kFxPhaser, kFxPhaserY, kFxRingMod, kFxRingModY, kFxComb, kFxCombY,
     kFxVinyl, kFxCrusher, kFxCrusherY, kFxColor, kFxDistortionV,
-    kFxTapeEcho, kFxEchoVerb, kFxDelay, kFxCloudDelay, kFxGranulator, kFxWaveVerb, kFxReverb
+    kFxTapeEcho, kFxEchoVerb, kFxDelay, kFxCloudDelay, kFxGranulator, kFxWaveVerb, kFxReverb, kFxSmear
 };
 
 enum FamilyId { kFamTime = 0, kFamFilter, kFamSpace, kFamTexture, kFamMod, kNumFamilies };
@@ -151,6 +153,10 @@ static const EffectSpec kEffects[kNumEffects] = {
         { "REVERSE", 0, 100, 50, kInt, fValens }, kNoCtl, kNoCtl, kNoCtl, kNoCtl } },
     { "DISTORTION", kFamTexture, 1, 0, 0, {
         { "DISTORTION", 0, 100, 50, kInt, fValens }, kNoCtl, kNoCtl, kNoCtl, kNoCtl } },
+    // Smear always rings out (no ON RELEASE choice): letting go is the point
+    { "SMEAR", kFamSpace, 3, 2, 0, {
+        { "DECAY", 2, 30, 12, kLog, fSec }, { "DRY CUT", 0, 100, 100, kLin, fPct }, { "TAIL", 0, 100, 35, kLin, fPct },
+        { "TONE", 0, 100, 55, kLin, fPct }, { "MIX", 0, 100, 100, kLin, fPct } } },
 };
 
 static inline int numControls(int e) { return kEffects[e].nFront + kEffects[e].nAdv; }

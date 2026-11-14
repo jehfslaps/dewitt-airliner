@@ -1435,6 +1435,70 @@ private:
 };
 
 // ---------------------------------------------------------------------------------------------
+// Smear: hold the pad and the beat drops out while everything going in smears into a giant reverb that
+// just hangs there. Let go: the dry comes straight back, and the smear drops to TAIL, darkens, and rings
+// out on its own for DECAY seconds. (The live-stream "shout into the void" move.)
+class Smear {
+public:
+    void clear() {
+        fdn.clear();
+        for (int c = 0; c < 2; ++c) { for (int k = 0; k < 4; ++k) ap[c][k].clear(); hp[c].y = 0.f; }
+        oL = oR = 0.f; tail = 0.f; env = 0.f;
+    }
+    void idleCheck() { idle = (ramp.v <= 0.f && tail < 1e-6f); }
+    Ramp ramp; Smooth cutSm, mixSm;
+    float fs = 44100.f;
+    void prepare(float sr) {
+        fs = sr;
+        ramp.setTime(fs, 0.006f);
+        cutSm.setTime(fs, 0.004f); mixSm.setTime(fs, 0.004f);
+        fdn.prepare(fs, 1.6f);                                        // a bigger room than Wave Verb
+        static const float ms[2][4] = { { 4.1f, 6.7f, 9.3f, 13.9f }, { 4.9f, 7.4f, 10.7f, 12.1f } };
+        for (int c = 0; c < 2; ++c) {
+            for (int k = 0; k < 4; ++k) ap[c][k].prepare((int)(ms[c][k] * 0.001f * fs), 0.7f);   // dense: no echoes, a wash
+            hp[c].setLP(fs, 140.f); hp[c].y = 0.f;
+        }
+        envDown = 1.f / (0.15f * fs);                                  // the drop to TAIL takes 150 ms
+        cDecay = cTone = -1.f; tail = 0.f; env = 0.f; oL = oR = 0.f; idle = true;
+    }
+    void block(const BlockCtx&, float decayS, float cutPct, float tailPct, float tonePct, float mixPct) {
+        if (std::fabs(decayS - cDecay) > 0.01f) { cDecay = decayS; fdn.setDecay(decayS); }
+        const float th = 1500.f * std::pow(16000.f / 1500.f, tonePct * 0.01f);
+        if (std::fabs(th - cTone) > 1.f) {
+            cTone = th; fdn.setTone(th);
+            OnePole o; o.setLP(fs, th); aHeld = o.a;
+            o.setLP(fs, th * 0.35f); aTail = o.a;                     // after letting go: darker
+        }
+        tCut = cutPct * 0.01f; tTail = tailPct * 0.01f; tMix = mixPct * 0.01f;
+        idle = (ramp.v <= 0.f && tail < 1e-6f);
+    }
+    inline void process(float& l, float& r, bool on) {
+        if (!on && idle) return;
+        const float a = ramp.tick(on);
+        env = a > env ? a : std::max(a, env - envDown);                // held: up with the pad, down in 150 ms
+        const float cut = cutSm.tick(tCut), mix = mixSm.tick(tMix);
+        float il = hp[0].hp(l) * a, ir = hp[1].hp(r) * a;              // only what plays while held goes in
+        for (int k = 0; k < 4; ++k) { il = ap[0][k].tick(il); ir = ap[1][k].tick(ir); }
+        float wl, wr;
+        fdn.tick(il * 0.5f, ir * 0.5f, 0.0008f * fs, wl, wr);
+        const float k = aTail + (aHeld - aTail) * env;
+        oL += k * (wl - oL); oR += k * (wr - oR);
+        tail = std::max(tail * 0.99997f, std::max(std::fabs(wl), std::fabs(wr)));
+        const float wet = mix * (tTail + (1.f - tTail) * env) * 1.25f;
+        const float dry = 1.f - cut * a;
+        l = l * dry + oL * wet;
+        r = r * dry + oR * wet;
+    }
+private:
+    Fdn8 fdn;
+    Allpass ap[2][4];
+    OnePole hp[2];
+    float tCut = 1.f, tTail = 0.35f, tMix = 1.f, cDecay = -1.f, cTone = -1.f, aHeld = 0.3f, aTail = 0.1f;
+    float tail = 0.f, env = 0.f, envDown = 0.0002f, oL = 0.f, oR = 0.f;
+    bool idle = true;
+};
+
+// ---------------------------------------------------------------------------------------------
 // Cloud Delay: pitch-shifted grains fed back on themselves and blurred into a cloud
 class CloudDelay {
 public:

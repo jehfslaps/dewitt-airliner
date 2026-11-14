@@ -394,6 +394,33 @@ int main(int argc, char** argv)
             writeFollow(0); reload("fol0b"); showBank(0);
         }
 
+        // ------------------------------------------------ SMEAR: hold = the beat drops out into a hanging wash; let go = the beat's
+        // back and the smear rings on its own, quieter and darker; ALL OFF stops it
+        {
+            pushParam(slotParam(16, F_TYPE), typeOfEffect(kFxSmear));
+            pushParam(slotParam(16, F_LATCH), 0);
+            for (int k = 0; k < 5; ++k) pushParam(slotParam(16, F_K1 + k), defaultNorm(kFxSmear, k));
+            run(0.3);
+            const Stats before = run(0.5);
+            pushParam(PAD(16), 1); run(0.5);
+            const Stats held = run(1.0);
+            pushParam(PAD(16), 0);
+            const Stats back = run(0.5);
+            const Stats t1 = run(1.0, 0.f), t2 = run(3.0, 0.f);
+            printf("     smear: before %.3f, held %.3f (in %.3f, off the dry %.3f), back %.3f, alone 1 s %.4f, 1-4 s %.4f\n",
+                   before.rms, held.rms, held.inRms, held.diff, back.rms, t1.rms, t2.rms);
+            CHECK(held.diff > 0.8f * held.inRms && held.rms > 0.3f * held.inRms && held.rms < 2.f * held.inRms,
+                  "SMEAR held: the dry is gone, the wash is about as loud as the beat was");
+            CHECK(back.rms > 0.8f * before.rms, "SMEAR let go: the beat comes straight back");
+            CHECK(t1.rms > 0.01f && t1.rms < held.rms * 0.6f, "SMEAR rings out on its own after letting go, quieter than while held");
+            CHECK(t2.rms > 0.002f && t2.rms < t1.rms, "SMEAR keeps ringing for seconds and fades");
+            { std::string st = saveState(); setStateKey(st, "alloff", "smear1"); loadState(st); }
+            run(0.1, 0.f);                                       // its short fade-out
+            const Stats off = run(0.5, 0.f);
+            CHECK(off.rms < 1e-4f && getv(oVoices) == 0, "ALL OFF stops a ringing SMEAR");
+            pushParam(slotParam(16, F_TYPE), kTypeEmpty); run(0.05);
+        }
+
         endlessChecks();
         clickChecks();
         valensChecks();

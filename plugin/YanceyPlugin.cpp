@@ -67,6 +67,7 @@ struct FxPool {
     ValensGrid stut[2] = { ValensGrid(false), ValensGrid(false) };
     ValensGrid rev[2] = { ValensGrid(true), ValensGrid(true) };
     ValensDistortion dist[2];
+    Smear smear[2];
 
     void prepare(float fs) {
         for (int k = 0; k < 2; ++k) {
@@ -79,6 +80,7 @@ struct FxPool {
             gran[k].prepare(fs); brep[k].prepare(fs); rstep[k].prepare(fs); mdel[k].prepare(fs); mrev[k].prepare(fs);
             chorusY[k].prepare(fs); flangerY[k].prepare(fs); phaserY[k].prepare(fs); combY[k].prepare(fs); ringY[k].prepare(fs); crushY[k].prepare(fs);
             stut[k].prepare(fs); rev[k].prepare(fs); dist[k].prepare(fs);
+            smear[k].prepare(fs);
         }
     }
     void block(int e, int k, const BlockCtx& ctx, const float* v) {
@@ -125,6 +127,7 @@ struct FxPool {
         case kFxStutterV:    stut[k].block(ctx, v[0], v[4]); break;
         case kFxReverseV:    rev[k].block(ctx, v[0], v[4]); break;
         case kFxDistortionV: dist[k].block(ctx, v[0]); break;
+        case kFxSmear:       smear[k].block(ctx, v[0], v[1], v[2], v[3], v[4]); break;
         default: break;
         }
     }
@@ -168,6 +171,7 @@ struct FxPool {
         case kFxStutterV:    stut[k].process(l, r, on, ck); break;
         case kFxReverseV:    rev[k].process(l, r, on, ck); break;
         case kFxDistortionV: dist[k].process(l, r, on); break;
+        case kFxSmear:       smear[k].idleCheck(); smear[k].process(l, r, on); break;
         default: break;
         }
     }
@@ -204,6 +208,7 @@ struct FxPool {
         case kFxCrusherY:   crushY[k].clear(); break;
         case kFxStutterV:   stut[k].clear(); break;
         case kFxReverseV:   rev[k].clear(); break;
+        case kFxSmear:      smear[k].clear(); break;
         default: break;
         }
     }
@@ -1000,7 +1005,8 @@ private:
 
     void releaseVoice(Voice& vc, int e)
     {
-        const bool ring = kEffects[e].tail && vc.slot >= 0 && effectOf(fParams, vc.slot) == e && fParams[slotParam(vc.slot, F_REL)] > 0.5f;
+        const bool ring = e == kFxSmear                         // the smear always rings out
+            || (kEffects[e].tail && vc.slot >= 0 && effectOf(fParams, vc.slot) == e && fParams[slotParam(vc.slot, F_REL)] > 0.5f);
         if (ring) { vc.state = kVoiceRing; vc.quietFor = 0.f; }
         else { vc.state = kVoiceCut; vc.cut = 1.f; }
     }
