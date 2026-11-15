@@ -32,6 +32,7 @@ struct Prefs {
 bool readPrefs(Prefs& p);
 void writePrefs(const Prefs& update);   // merges with what is already saved
 void clearPrefs();                      // factory reset: forget everything saved on this computer
+bool reduceMotion();                    // the system asks for less animation (Windows: Animation effects off; Mac: Reduce motion)
 
 // presets: <settings folder>/Sets and /Pads; names are file names without the extension
 std::string presetsDir(const char* kind);                       // creates it if needed; "" if unavailable

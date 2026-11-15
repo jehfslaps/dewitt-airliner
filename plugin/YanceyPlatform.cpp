@@ -24,8 +24,27 @@
 # include <sys/types.h>
 # include <dirent.h>
 #endif
+#ifdef __APPLE__
+# include <CoreFoundation/CoreFoundation.h>
+#endif
 
 namespace yancey {
+
+bool reduceMotion()
+{
+#ifdef _WIN32
+    BOOL anim = TRUE;
+    if (SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, &anim, 0)) return anim == FALSE;
+    return false;
+#elif defined(__APPLE__)
+    Boolean valid = false;
+    const Boolean on = CFPreferencesGetAppBooleanValue(CFSTR("reduceMotion"), CFSTR("com.apple.universalaccess"), &valid);
+    return valid && on;
+#else
+    const char* e = std::getenv("DEWITT_REDUCE_MOTION");   // for testing on Linux
+    return e && e[0] == '1';
+#endif
+}
 
 #ifdef _WIN32
 static std::wstring toWide(const char* utf8)

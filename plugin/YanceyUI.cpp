@@ -229,11 +229,22 @@ static const char* const kPathSep = "\\";
 #else
 static const char* const kPathSep = "/";
 #endif
+// motion (the fluid-motion rules): everything that moves, scales, fades or changes value runs on a damped spring,
+// integrated at 240 Hz, redirected from where it is (never restarted) when the target changes. The four settings
+// below are the approved "Balanced" ones: response = about how long it takes to settle, damping 1 = no overshoot.
+static bool gReduceMotion = false;           // the system asks for less motion: springs jump to their targets
 struct Spring {
     float x = 0.f, v = 0.f, target = 0.f, k = 300.f, zeta = 0.85f;
     void set(float t) { target = t; }
     void snap(float t) { target = x = t; v = 0.f; }
+    Spring& tune(float response, float damping) {   // response in seconds
+        const float w = 6.2831853f / response; k = w * w; zeta = damping; return *this;
+    }
+    Spring& general() { return tune(0.38f, 0.78f); }   // panels, menus, knobs, value changes
+    Spring& press()   { return tune(0.10f, 1.f); }     // buttons, pads, hover
+    Spring& fade()    { return tune(0.475f, 1.f); }    // fades and quiet transitions
     bool step(float dt) {
+        if (gReduceMotion) { if (x == target && v == 0.f) return false; x = target; v = 0.f; return true; }
         if (std::fabs(x - target) < 0.0005f && std::fabs(v) < 0.0005f) {
             if (x == target && v == 0.f) return false;
             x = target; v = 0.f; return true;
@@ -279,30 +290,38 @@ public:
         for (int s = 0; s < kNumSlots; ++s) {
             for (int e = 0; e < kNumEffects; ++e) fMemValid[s][e] = false;
             fActive[s] = false;
-            fLift[s].k = 420.f; fLift[s].zeta = 0.8f;
+            fLift[s].general();
             fSmpLoaded[s] = false; fSmpDur[s] = 0.f; fSmpErrorUntil[s] = 0.0;
         }
         for (int q = 0; q < kPadsPerPage; ++q) {
             fPosSlot[q] = q;
-            fPadPX[q].k = 260.f; fPadPX[q].zeta = 0.82f; fPadPY[q].k = 260.f; fPadPY[q].zeta = 0.82f;
+            fPadPX[q].general(); fPadPY[q].general();
+            fPlusA[q].press();
             fPadPX[q].snap(padX(q)); fPadPY[q].snap(padY(q));
         }
         for (int p = 0; p < kNumPads; ++p) {
-            fPadScale[p].k = 900.f; fPadScale[p].zeta = 0.45f; fPadScale[p].snap(1.f);
-            fRing[p].k = 260.f; fRing[p].zeta = 1.f;
+            fPadScale[p].tune(0.16f, 0.82f).snap(1.f);           // a pad hit: a quick press, a hint of give
+            fRing[p].fade();
         }
-        for (int j = 0; j < kNumJobs; ++j) { fJobPop[j].k = 500.f; fJobPop[j].zeta = 0.9f; fGhost[j] = -1.f; fGhostAt[j] = 0.0; fJobLast[j] = -9.f; }
+        for (int j = 0; j < kNumJobs; ++j) { fJobPop[j].general(); fGhost[j] = -1.f; fGhostAt[j] = 0.0; fJobLast[j] = -9.f; }
         for (int i = 0; i < kNumLearn; ++i) { fMap[i] = -1; fProjectMap[i] = -1; }
-        fLimitT.k = 520.f; fLimitT.zeta = 0.62f; fLimitT.snap(1.f);
-        fTimingT.k = 520.f; fTimingT.zeta = 0.8f;
-        fNotesT.k = 520.f; fNotesT.zeta = 0.9f;
+        fLimitT.general().snap(1.f);
+        fTimingT.general();
+        fNotesT.general();
         fSpin.k = 6.f; fSpin.zeta = 1.f;
-        fBounce.k = 900.f; fBounce.zeta = 0.35f;
-        fDarkT.k = 90.f; fDarkT.zeta = 1.f;
-        fPanelA.k = 300.f; fPanelA.zeta = 0.85f;
-        fToastA.k = 300.f; fToastA.zeta = 0.85f;
-        fUndoPress.k = 900.f; fUndoPress.zeta = 0.45f; fUndoPress.snap(1.f);
-        fRedoPress.k = 900.f; fRedoPress.zeta = 0.45f; fRedoPress.snap(1.f);
+        fBounce.general();
+        fDarkT.fade();
+        fPanelA.general();
+        fToastA.fade();
+        fUndoPress.tune(0.16f, 0.82f).snap(1.f);
+        fRedoPress.tune(0.16f, 0.82f).snap(1.f);
+        fMenuA.general();
+        fHovX.press(); fHovY.press(); fHovW.press(); fHovH.press(); fHovA.press();
+        fTabX.general().snap(pageTabX(0));
+        fPageSlide.general();
+        fCardA.general().snap(1.f);
+        fScrA.general().snap(1.f);
+        gReduceMotion = reduceMotion();
         std::snprintf(fPresetName, sizeof(fPresetName), "%s", "Default");
 
         Prefs pr;
@@ -620,6 +639,15 @@ protected:
         moving |= fLimitT.step(dt); moving |= fTimingT.step(dt); moving |= fNotesT.step(dt); moving |= fAllPress.step(dt);
         moving |= fUndoPress.step(dt); moving |= fRedoPress.step(dt);
         fPanelA.set(fPanelOpen ? 1.f : 0.f); moving |= fPanelA.step(dt);
+        fMenuA.set(fMenuOpen ? 1.f : 0.f); moving |= fMenuA.step(dt);
+        moving |= fHovX.step(dt); moving |= fHovY.step(dt); moving |= fHovW.step(dt); moving |= fHovH.step(dt); moving |= fHovA.step(dt);
+        fTabX.set(pageTabX(fPage)); moving |= fTabX.step(dt);
+        moving |= fPageSlide.step(dt);
+        if (fSel != fCardSel) { fCardSel = fSel; fCardA.x = 0.f; fCardA.v = 0.f; fCardA.set(1.f); }   // another pad's card eases in
+        moving |= fCardA.step(dt);
+        if (fScr != fLastScr) { fLastScr = fScr; if (fPanelA.x > 0.5f) { fScrA.x = 0.f; fScrA.v = 0.f; } fScrA.set(1.f); }
+        moving |= fScrA.step(dt);
+        for (int q = 0; q < kPadsPerPage; ++q) { fPlusA[q].set(fPlusHover == q ? 1.f : 0.f); moving |= fPlusA[q].step(dt); }
         fToastA.set(t < fToastUntil ? 1.f : 0.f); moving |= fToastA.step(dt);
         for (int k = 0; k < kNumSlots; ++k) {
             if (fSmpErrorUntil[k] > 0.0 && fSmpErrorUntil[k] < t) { fSmpErrorUntil[k] = 0.0; moving = true; }
@@ -695,7 +723,7 @@ protected:
 
         if (fToastA.x > 0.003f) drawToast();
         if (fPanelA.x > 0.003f) drawPanel();
-        if (fMenuOpen) drawMenu();
+        if (fMenuOpen || fMenuA.x > 0.003f) drawMenu();
         restore();
     }
 
@@ -1097,19 +1125,21 @@ protected:
     void drawPadSection()
     {
         const int np = pagesShown();
+        const float mx = fTabX.x;                             // the marker, sliding between the tabs
+        beginPath(); roundedRect(mx, kTabY, 44.f, kTabH, kTabH * 0.5f);
+        fillColor(fDark ? fT.pillFill : fT.text); fill();
         for (int pg = 0; pg < np; ++pg) {
             const float x = pageTabX(pg), w = 44.f;
-            const bool on = pg == fPage;
+            const float on = clamp01(1.f - std::fabs(mx - x) / w);   // how much of this tab the marker covers
             beginPath(); roundedRect(x, kTabY, w, kTabH, kTabH * 0.5f);
-            fillColor(withAlpha(fDark ? fT.pillFill : fT.text, on ? 1.f : 0.f)); fill();
-            strokeColor(fDark ? (on ? fT.outline : fT.frame) : fT.text); strokeWidth(2.5f); stroke();
+            strokeColor(fDark ? Color(fT.frame, fT.outline, on) : fT.text); strokeWidth(2.5f); stroke();
             if (fLearning == kLearnBank0 + pg) {                 // learning a button on the controller for this bank
                 const float blink = 0.5f + 0.5f * std::sin((float)now() * 12.566f);
                 beginPath(); roundedRect(x - 3.f, kTabY - 3.f, w + 6.f, kTabH + 6.f, kTabH * 0.5f + 3.f);
                 strokeColor(withAlpha(kAmberAcc, blink)); strokeWidth(3.f); stroke();
             }
             char lb[4] = { (char)('A' + pg), 0, 0, 0 };
-            drawText(fFontHeavy, 12.f, on ? (fDark ? fT.text : fT.bg) : fT.text, x + w * 0.5f, kTabY + kTabH * 0.5f, NanoVG::ALIGN_CENTER | NanoVG::ALIGN_MIDDLE, lb, 0.3f);
+            drawText(fFontHeavy, 12.f, fDark ? fT.text : Color(fT.text, fT.bg, on), x + w * 0.5f, kTabY + kTabH * 0.5f, NanoVG::ALIGN_CENTER | NanoVG::ALIGN_MIDDLE, lb, 0.3f);
         }
         if (false) {
             const float x = pageTabX(np);
@@ -1123,6 +1153,13 @@ protected:
         fillColor(fT.tray); fill();
         strokeColor(fT.trayEdge); strokeWidth(1.5f); stroke();
 
+        const float slide = fPageSlide.x;
+        save();
+        if (std::fabs(slide) > 0.001f) {
+            scissor(kTrayX, kTrayY, kTrayW, kTrayH);
+            translate(slide * 70.f, 0.f);
+            globalAlpha(clamp01(1.f - 0.9f * std::fabs(slide)));
+        }
         for (int pass = 0; pass < 2; ++pass)
             for (int q = 0; q < kPadsPerPage; ++q) {
                 const int s = slotOfPad(fPage * kPadsPerPage + fPosSlot[q]);
@@ -1130,6 +1167,7 @@ protected:
                 if ((pass == 0) == top) continue;
                 if (s >= 0) drawPad(s, fPadPX[q].x, fPadPY[q].x, posDisplay(q));
             }
+        restore();
     }
 
     // a blank pad on bank B or C: waiting for an effect, sample or beat
@@ -1145,9 +1183,9 @@ protected:
         char num[12]; std::snprintf(num, sizeof(num), "%02d", q + 1);
         drawText(fFontHeavy, 11.f, withAlpha(fT.text, 0.45f), 12.f, 19.f, NanoVG::ALIGN_LEFT | NanoVG::ALIGN_MIDDLE, num);
         // the +: under the mouse it lights up, and a click opens the pad menu right here
-        const bool hov = fPlusHover == q;
-        if (hov) { beginPath(); circle(kPadW * 0.5f, kPadH * 0.5f + 1.f, kPlusR - 3.f); fillColor(withAlpha(fT.text, 0.1f)); fill(); }
-        drawText(fFontHeavy, 22.f, withAlpha(fT.text, hov ? 0.85f : 0.35f), kPadW * 0.5f, kPadH * 0.5f + 2.f, NanoVG::ALIGN_CENTER | NanoVG::ALIGN_MIDDLE, "+");
+        const float hov = q >= 0 && q < kPadsPerPage ? clamp01(fPlusA[q].x) : 0.f;
+        if (hov > 0.003f) { beginPath(); circle(kPadW * 0.5f, kPadH * 0.5f + 1.f, (kPlusR - 3.f) * (0.7f + 0.3f * hov)); fillColor(withAlpha(fT.text, 0.1f * hov)); fill(); }
+        drawText(fFontHeavy, 22.f, withAlpha(fT.text, 0.35f + 0.5f * hov), kPadW * 0.5f, kPadH * 0.5f + 2.f, NanoVG::ALIGN_CENTER | NanoVG::ALIGN_MIDDLE, "+");
         drawText(fFontBold, 8.5f, withAlpha(fT.text, 0.4f), kPadW * 0.5f, kPadH - 16.f, NanoVG::ALIGN_CENTER | NanoVG::ALIGN_MIDDLE, "EMPTY", 0.4f);
         restore();
     }
@@ -1495,7 +1533,8 @@ protected:
         const char* name = kind == 4 ? "EMPTY" : (kind == 3 ? "BEAT" : (kind == 2 ? "SAMPLE" : (kind == 1 ? kMoveNames[m] : kEffects[e].name)));
 
         save();
-        translate(kDetX, kDetY);
+        translate(kDetX, kDetY + 8.f * (1.f - fCardA.x));
+        if (fCardA.x < 0.999f) globalAlpha(0.35f + 0.65f * clamp01(fCardA.x));
         beginPath(); roundedRect(0.f, 5.f, kDetW, kDetH, 20.f); fillColor(withAlpha(fT.shadow, fT.shadowA)); fill();
         beginPath(); roundedRect(1.5f, 1.5f, kDetW - 3.f, kDetH - 3.f, 18.5f); fillColor(bg); fill();
         strokeColor(fT.outline); strokeWidth(3.f); stroke();
@@ -2041,6 +2080,9 @@ protected:
         beginPath(); moveTo(w - 41.f, 31.f); lineTo(w - 31.f, 41.f); moveTo(w - 31.f, 31.f); lineTo(w - 41.f, 41.f);
         lineCap(NanoVG::ROUND); strokeColor(ink); strokeWidth(2.2f); stroke();
 
+        const float sa = clamp01(fScrA.x);
+        save();
+        if (sa < 0.999f) { scissor(0.f, 56.f, w, h - 56.f); translate(16.f * (1.f - fScrA.x), 0.f); globalAlpha(a * (0.15f + 0.85f * sa)); }
         switch (fScr) {
         case kScrHome: {
             const int st = ctrlStatus();
@@ -2257,6 +2299,7 @@ protected:
         const int n = panelButtons(bt);
         for (int i = 0; i < n; ++i) panelButton(bt[i]);
         restore();
+        restore();
     }
 
     void drawToast()
@@ -2299,6 +2342,14 @@ protected:
         if (y < 8.f) y = 8.f;
         fMenuRX = x; fMenuRY = y;
 
+        const float ma = clamp01(fMenuA.x);
+        save();
+        {   // grow from the corner nearest to where it was opened
+            const float ax = fMenuX <= x + 1.f ? x : x + w, ay = fMenuY <= y + 1.f ? y : y + h;
+            const float sc = 0.94f + 0.06f * fMenuA.x;
+            translate(ax, ay - 6.f * (1.f - fMenuA.x)); scale(sc, sc); translate(-ax, -ay);
+            globalAlpha(ma);
+        }
         beginPath(); roundedRect(x, y + 4.f, w, h, 12.f);
         fillColor(withAlpha(fT.shadow, fT.shadowA)); fill();
         beginPath(); roundedRect(x, y, w, h, 12.f);
@@ -2318,6 +2369,25 @@ protected:
         }
         const float top = iy, cw = menuColW();
         float colY[4] = { top, top, top, top };
+        {   // the hover highlight: find the hovered item, then let the highlight glide there
+            float hy[4] = { top, top, top, top };
+            for (int i = 0; i < fMenuCount; ++i) {
+                const MenuItem& it = fMenuItems[i];
+                const float ih = menuItemH(i);
+                if (i == fMenuHover && fMenuOpen && !it.header) {
+                    const float tx = x + cw * it.col + 6.f, ty = hy[it.col];
+                    if (fHovA.x < 0.02f) { fHovX.snap(tx); fHovY.snap(ty); fHovW.snap(cw - 12.f); fHovH.snap(ih); }   // appears in place
+                    fHovX.set(tx); fHovY.set(ty); fHovW.set(cw - 12.f); fHovH.set(ih);
+                }
+                hy[it.col] += ih;
+            }
+            fHovA.set(fMenuHover >= 0 && fMenuOpen ? 1.f : 0.f);
+        }
+        const float ha = clamp01(fHovA.x);
+        if (ha > 0.003f) {
+            beginPath(); roundedRect(fHovX.x, fHovY.x, fHovW.x, fHovH.x, 8.f);
+            fillColor(withAlpha(fT.menuHover, ha)); fill();
+        }
         for (int c = 1; c < fMenuCols; ++c) {
             beginPath(); moveTo(x + cw * c, top + 4.f); lineTo(x + cw * c, y + h - 10.f - (fMenuFoot[0] ? 30.f : 0.f));
             strokeColor(withAlpha(fT.menuText, 0.15f)); strokeWidth(1.f); stroke();
@@ -2332,12 +2402,12 @@ protected:
                 drawText(fFontHeavy, 9.f, withAlpha(fT.menuText, 0.5f), cx0 + 14.f, iy + ih * 0.5f + 2.f, NanoVG::ALIGN_LEFT | NanoVG::ALIGN_MIDDLE, it.label, 0.6f);
                 continue;
             }
-            const bool hov = i == fMenuHover;
-            if (hov) {
-                beginPath(); roundedRect(cx0 + 6.f, iy, cw - 12.f, ih, 8.f);
-                fillColor(fT.menuHover); fill();
-            }
-            const Color c = hov ? fT.menuHoverText : fT.menuText;
+            // the text turns as the highlight covers it
+            const float ox = std::max(0.f, std::min(cx0 + cw - 6.f, fHovX.x + fHovW.x) - std::max(cx0 + 6.f, fHovX.x));
+            const float oy = std::max(0.f, std::min(iy + ih, fHovY.x + fHovH.x) - std::max(iy, fHovY.x));
+            const float cover = ha * clamp01(ox / (cw - 12.f)) * clamp01(oy / ih);
+            const bool hov = cover > 0.5f;
+            const Color c = Color(fT.menuText, fT.menuHoverText, cover);
             drawText(fFontBold, 12.f, it.act == kActFactory && !hov ? kRedAcc : c, cx0 + 14.f, iy + ih * 0.5f, NanoVG::ALIGN_LEFT | NanoVG::ALIGN_MIDDLE, it.label);
             if (fMenuChecked == i || fMenuChecked2 == i || fMenuChecked3 == i || fMenuChecked4 == i || fMenuChecked5 == i) {
                 const float ccx = cx0 + cw - 22.f, ccy = iy + ih * 0.5f;
@@ -2353,6 +2423,7 @@ protected:
             strokeColor(withAlpha(fT.menuText, 0.2f)); strokeWidth(1.f); stroke();
             drawText(fFontMed, 9.5f, withAlpha(fT.menuText, 0.7f), x + 14.f, iy + 19.f, NanoVG::ALIGN_LEFT | NanoVG::ALIGN_MIDDLE, fMenuFoot);
         }
+        restore();
     }
 
     void menuBegin(int kind, int target, float x, float y, float w)
@@ -3133,6 +3204,7 @@ protected:
     {
         pg = std::max(0, std::min(kNumPages - 1, pg));
         if (pg == fPage) return;
+        fPageSlide.x = pg > fPage ? 1.f : -1.f; fPageSlide.v = 0.f; fPageSlide.set(0.f);   // in from the side you went to
         fPage = pg;
         if (fFollow || bankButtonsMapped()) sendBank();          // the plug-in plays (or reports) this bank
         for (int q = 0; q < kPadsPerPage; ++q) { fPosSlot[q] = q; fPadPX[q].snap(padX(q)); fPadPY[q].snap(padY(q)); }
@@ -4156,6 +4228,13 @@ protected:
     Spring fPadPX[kPadsPerPage], fPadPY[kPadsPerPage], fLift[kNumSlots];
     Spring fPadScale[kNumPads], fRing[kNumPads], fJobPop[kNumJobs];
     Spring fLimitT, fTimingT, fNotesT, fAllPress, fSpin, fBounce, fDarkT, fPanelA, fToastA, fUndoPress, fRedoPress;
+    Spring fMenuA;                                   // a menu growing out of where it was opened, and back
+    Spring fHovX, fHovY, fHovW, fHovH, fHovA;        // the menu's hover highlight, gliding from item to item
+    Spring fTabX;                                    // the bank tabs' marker
+    Spring fPageSlide;                               // a new bank sliding in (-1 / +1 -> 0)
+    Spring fCardA, fScrA;                            // the pad card and the setup screens easing in
+    Spring fPlusA[kPadsPerPage];                     // the + on an empty pad lighting up
+    int fCardSel = -1, fLastScr = -1;
     float fDonutAngle = 0.f, fLastLevel = 0.f;
     double fLastTime = 0.0;
     int fWake = 3;
