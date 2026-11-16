@@ -34,7 +34,8 @@ int main()
     CHECK(follows(kFxWaveVerb, 3, 3, 0) && foldResolve(kFxWaveVerb, 4, 3).host == -1, "WAVE VERB: PRE DELAY follows DECAY, TONE fixed");
     CHECK(foldResolve(kFxFilterDrive, 3, 3).host == -1 && foldResolve(kFxFilterDrive, 4, 3).host == -1, "FILTER + DRIVE: TYPE and MIX stay where set");
     int big = 0; for (int e = 0; e < kNumEffects; ++e) if (numControls(e) > 3) ++big;
-    char m[80]; std::snprintf(m, sizeof(m), "%d effects have more than three controls", big); CHECK(big == 13, m);
+    char m[80]; std::snprintf(m, sizeof(m), "%d effects have more than three controls", big); CHECK(big == 14, m);
+    CHECK(foldResolve(kFxPitch, 3, 3).host == -1 && foldResolve(kFxPitch, 4, 3).host == -1, "PITCH: FINE and GRAIN stay where set");
     CHECK(foldResolve(kFxSmear, 3, 3).host == -1 && foldResolve(kFxSmear, 4, 3).host == -1, "SMEAR: TONE and MIX stay where set");
     printf("\n%d failure(s)\n", fails);
     return fails ? 1 : 0;

@@ -154,7 +154,7 @@ static inline const std::vector<FactorySet>& factorySets()
         dryKill, thrw, g2, kill,
         E(kFxLoopGrab, { L4 }), E(kFxLoopGrab, { L8 }), E(kFxLoopGrab, { L16 }), E(kFxLoopGrab, { L32 }),
         E(kFxDelay, { 9, 70, 2 }), E(kFxWaveVerb, { 10, 50 }), E(kFxCloudDelay, { 50, 12, 100, 70 }), E(kFxFlanger, { 0.5f, 90, 80 }),
-        E(kFxCoil, { 80, S8 }), E(kFxScatter, { STUT }), E(kFxHalfSpeed, { 1 }), E(kFxCrusher, { 70, 40 }),
+        E(kFxCoil, { 80, S8 }), E(kFxScatter, { STUT }), E(kFxHalfSpeed, { 1 }), E(kFxPitch, { -12, 800 }),
         frz, g4, g1, allOff } },
 
     { "CLUB", "Peak Time", {
@@ -207,7 +207,7 @@ static inline const std::vector<FactorySet>& factorySets()
         // B: halve the loop or the repeat each pad along the row
         E(kFxLoopGrab, { L1BAR }), E(kFxLoopGrab, { L2 }), E(kFxLoopGrab, { L4 }), E(kFxLoopGrab, { L8 }),
         E(kFxBeatRepeat, { D4 }), E(kFxBeatRepeat, { D8 }), E(kFxBeatRepeat, { D16 }), E(kFxBeatRepeat, { D32 }),
-        E(kFxHalfSpeed, { 0 }), E(kFxHalfSpeed, { 1 }), E(kFxHalfSpeed, { 2 }), E(kFxIsolator, { 0.f, 0.5f, 0.5f }),
+        E(kFxHalfSpeed, { 0 }), E(kFxHalfSpeed, { 1 }), E(kFxPitch, { -12, 2000 }), E(kFxIsolator, { 0.f, 0.5f, 0.5f }),
         g1, g2, timing, allOff } },
 
     { "LIVE", "FX Lab", {
@@ -217,7 +217,7 @@ static inline const std::vector<FactorySet>& factorySets()
         dryKill, thrw, frz, kill,
         E(kFxWaveVerb, { 12, 100 }), E(kFxReverb, { 250, 100, 100 }), E(kFxDelay, { 15, 90, 1 }), E(kFxTapeEcho, { 0, 95, 100, 100 }),
         E(kFxFilterDrive, { 200, 90, 100, LP }), E(kFxFilterDrive, { 8000, 90, 60, BP }), E(kFxIsolator, { 1.f, 0.f, 1.f }), E(kFxRingMod, { 400 }),
-        E(kFxCrusher, { 100, 90 }), E(kFxColor, { RADIO }), E(kFxHalfSpeed, { 2 }), E(kFxDjLooper, { 100, -1 }),
+        E(kFxCrusher, { 100, 90 }), E(kFxColor, { RADIO }), E(kFxPitch, { 12, 0, 100, 0, 100 }), E(kFxDjLooper, { 100, -1 }),
         g8, g1, timing, allOff } },
     };
     return sets;

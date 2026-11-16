@@ -124,6 +124,9 @@ echo "Knob folding: $(grep -c '^ok' dist/logs/checks-foldtest.txt) ok, $(tail -1
 $CXX $N test/settest.cpp -o build-tests/settest
 build-tests/settest > dist/logs/checks-sets.txt 2>&1 || FAILED=1
 echo "Built-in sets: $(tail -1 dist/logs/checks-sets.txt)"
+$CXX $N test/pitchtest.cpp -o build-tests/pitchtest
+build-tests/pitchtest > dist/logs/checks-pitch.txt 2>&1 || FAILED=1
+echo "Pitch: $(tail -1 dist/logs/checks-pitch.txt)"
 grep '^FAIL' dist/logs/checks-foldtest.txt && FAILED=1 || true
 
 AFL="-std=gnu++17 -O2 -ffast-math -fno-finite-math-only -Idpf/distrho/src -Iplugin"

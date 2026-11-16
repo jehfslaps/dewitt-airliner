@@ -27,13 +27,13 @@ enum EffectId {
     // the Valens effects (from Jehf's Valens plug-in): one knob each, 0-100
     kFxStutterV = kNumLegacyEffects, kFxReverseV, kFxDistortionV,
     // added in 1.2
-    kFxSmear,
+    kFxSmear, kFxPitch,
     kNumEffects
 };
 
 // the order effects are chained in, whatever order their pads are pressed
 static const int kChainOrder[kNumEffects] = {
-    kFxLoopGrab, kFxDjLooper, kFxStutterV, kFxReverseV, kFxBeatRepeat, kFxRevStepper, kFxStopper, kFxBackSpin, kFxHalfSpeed, kFxScatter, kFxCoil,
+    kFxLoopGrab, kFxDjLooper, kFxStutterV, kFxReverseV, kFxBeatRepeat, kFxRevStepper, kFxStopper, kFxBackSpin, kFxHalfSpeed, kFxScatter, kFxCoil, kFxPitch,
     kFxFilterDrive, kFxIsolator, kFxLpf, kFxHpf, kFxBpf,
     kFxChorus, kFxChorusY, kFxFlanger, kFxFlangerY, kFxPhaser, kFxPhaserY, kFxRingMod, kFxRingModY, kFxComb, kFxCombY,
     kFxVinyl, kFxCrusher, kFxCrusherY, kFxColor, kFxDistortionV,
@@ -45,7 +45,7 @@ static const char* const kFamilyNames[kNumFamilies] = { "TIME", "FILTER", "SPACE
 
 enum Scale { kLin = 0, kLog, kInt, kBool };
 enum Fmt { fBipolarDb, fHz, fPct, fTime, fLen, fRetrig, fMs, fSpeed, fNum, fSync, fDiv, fBits,
-           fFiltType, fSec, fSemi, fScat, fSpread, fNorm, fLfo, fHalf, fColorMode, fOnOff, fDRange, fDens, fBitsMpc, fMpcTime, fDjLen, fDjSpeed, fValens, fTapeLen };
+           fFiltType, fSec, fSemi, fScat, fSpread, fNorm, fLfo, fHalf, fColorMode, fOnOff, fDRange, fDens, fBitsMpc, fMpcTime, fDjLen, fDjSpeed, fValens, fTapeLen, fCents };
 
 struct CtlSpec { const char* label; float min, max, def; Scale scale; Fmt fmt; };
 // tail: echo and reverb effects, which can cut or ring out on release
@@ -157,6 +157,10 @@ static const EffectSpec kEffects[kNumEffects] = {
     { "SMEAR", kFamSpace, 3, 2, 0, {
         { "DECAY", 2, 30, 12, kLog, fSec }, { "DRY CUT", 0, 100, 100, kLin, fPct }, { "TAIL", 0, 100, 35, kLin, fPct },
         { "TONE", 0, 100, 55, kLin, fPct }, { "MIX", 0, 100, 100, kLin, fPct } } },
+    // Pitch glides back to normal after letting go (no ON RELEASE choice)
+    { "PITCH", kFamTime, 3, 2, 0, {
+        { "PITCH", -12, 12, -12, kInt, fSemi }, { "GLIDE", 0, 2000, 120, kLin, fMs }, { "MIX", 0, 100, 100, kLin, fPct },
+        { "FINE", -50, 50, 0, kLin, fCents }, { "GRAIN", 0, 100, 30, kLin, fPct } } },
 };
 
 static inline int numControls(int e) { return kEffects[e].nFront + kEffects[e].nAdv; }
@@ -544,6 +548,7 @@ static inline void formatFmt(Fmt fmt, float v, char* buf, size_t sz)
     case fMpcTime: std::snprintf(buf, sz, "%s", kMpcTimeNames[(int)clampf(std::round(v), 0, 16)]); break;
     case fTapeLen: std::snprintf(buf, sz, "%d ms", (int)std::lround(djTapeMs(v))); break;
     case fValens:  { const int n = (int)std::lround(v); if (n <= 0) std::snprintf(buf, sz, "OFF"); else std::snprintf(buf, sz, "%d%%", n); break; }
+    case fCents:   { const int c = (int)std::lround(v); if (c == 0) std::snprintf(buf, sz, "0 ct"); else std::snprintf(buf, sz, "%+d ct", c); break; }
     }
 }
 

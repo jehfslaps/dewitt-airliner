@@ -207,7 +207,7 @@ page("05 · your controller", "05 / your controller", """
 
 # ------------------------------------------------------------------ 06 effects
 fam_title = {"TIME": "Time: loops, chops and speed", "FILTER": "Filters", "MOD": "Modulation", "TEXTURE": "Colour", "SPACE": "Space: echoes and reverbs"}
-fam_note = {"TIME": "These change when and how the beat plays.", "FILTER": "", "MOD": "", "TEXTURE": "", "SPACE": "Echoes and reverbs have ON RELEASE: CUT or RING OUT. SMEAR always rings out."}
+fam_note = {"TIME": "These change when and how the beat plays. PITCH glides back to normal after you let go.", "FILTER": "", "MOD": "", "TEXTURE": "", "SPACE": "Echoes and reverbs have ON RELEASE: CUT or RING OUT. SMEAR always rings out."}
 cards = {f: [] for f in fam_title}
 for fx in data["effects"]:
     knobs = " · ".join(f'<b>{e(k["label"])}</b> {e(k["def"])}' for k in fx["knobs"])

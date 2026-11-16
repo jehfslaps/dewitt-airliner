@@ -162,6 +162,7 @@ static const char* const kEffectDesc[kNumEffects] = {
     "Plays steps of the beat backwards, swelling into the next one. The knob sets how many; the same ones every bar.",
     "Warm saturation, from light grit to heavy crunch. The level comes down as it gets heavier.",
     "Hold to cut the beat and smear it into a giant hanging reverb. Let go: the beat's back and the smear rings out.",
+    "Shifts the beat up or down, in time. GLIDE bends into the pitch and back; GRAIN goes from smooth to gritty.",
 };
 
 static const char* const kMoveDesc[kNumMoves] = {

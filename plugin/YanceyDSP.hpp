@@ -1435,6 +1435,109 @@ private:
 };
 
 // ---------------------------------------------------------------------------------------------
+// Pitch: the beat up or down by up to an octave, in time. Two read heads move through a short delay at the new
+// speed and take turns (Hann crossfades, half a grain apart). When a head starts a new grain it looks for the
+// start point that lines up best with the other head's waveform (WSOLA), so steady notes stay on pitch with no
+// warble. Hold the pad: it glides into PITCH (+FINE) over GLIDE; let go: it glides back to normal, then hands back
+// the exact dry sound. GRAIN: 0 = long smooth grains, 100 = short gritty ones (less lining up, squarer fades).
+class PitchShift {
+public:
+    static constexpr int kBuf = 16384;               // 170 ms at 96 kHz: the longest grain plus the search
+    void clear() {
+        std::fill(std::begin(bl), std::end(bl), 0.f); std::fill(std::begin(br), std::end(br), 0.f);
+        std::fill(std::begin(bm), std::end(bm), 0.f);
+        wp = 0; semi = 0.f; eng = 0.f;
+        d[0] = d[1] = 64.f; cnt = 0.f;
+    }
+    float fs = 44100.f;
+    void prepare(float sr) {
+        fs = sr; mixSm.setTime(fs, 0.004f); engStep = 1.f / (0.008f * fs);
+        L = std::max(32, (int)(0.008f * fs));           // compare 8 ms of waveform
+        grain = 0.05f * fs;
+        clear();
+    }
+    void block(const BlockCtx&, float pitchSt, float glideMs, float mixPct, float cents, float grainPct) {
+        tSemi = pitchSt + cents * 0.01f;
+        // GLIDE: how long the whole bend takes (into the pitch, and back after letting go); 0 = a straight jump
+        glideStep = glideMs < 1.f ? 1e9f : std::max(std::fabs(tSemi), 1.f) / (glideMs * 0.001f * fs);
+        const float g = clampf(grainPct * 0.01f, 0.f, 1.f);
+        grainT = 0.090f * std::pow(15.f / 90.f, g) * fs;                 // 90 ms smooth .. 15 ms gritty
+        hard = g;
+        search = (int)(0.012f * fs * (1.f - 0.75f * g));                // gritty: less lining up
+        tMix = mixPct * 0.01f;
+    }
+    inline void process(float& l, float& r, bool on) {
+        if (!on && eng <= 0.f) return;                 // fully handed back: exact dry
+        const float want = on ? tSemi : 0.f;
+        semi += clampf(want - semi, -glideStep, glideStep);
+        const bool hold = on || std::fabs(semi) > 0.005f;
+        eng = hold ? std::min(1.f, eng + engStep) : std::max(0.f, eng - engStep);
+        bl[wp] = l; br[wp] = r; bm[wp] = l + r;
+        const float ratio = std::exp2(semi / 12.f);
+        // one counter runs both heads, half a grain apart, so their fades always add up to exactly 1
+        if (cnt >= grain) { cnt -= grain; if (cnt > 1.f) cnt = 0.f; grain = grainT; restart(0, ratio); }   // a GRAIN change lands here
+        const bool half = cnt >= 0.5f * grain;
+        if (half && !secondStarted) { restart(1, ratio); secondStarted = true; }
+        if (!half) secondStarted = false;
+        float wl = 0.f, wr = 0.f;
+        for (int h = 0; h < 2; ++h) {
+            float ph = cnt / grain + (h ? 0.5f : 0.f); if (ph >= 1.f) ph -= 1.f;
+            float win = std::sin(3.14159265f * ph); win *= win;           // the two heads always sum to 1
+            if (hard > 0.f) {
+                const float sq = clampf((0.5f - std::fabs(ph - 0.5f)) * (8.f + 24.f * hard), 0.f, 0.5f);
+                win = win * (1.f - hard) + sq * hard;
+            }
+            float a, b; readAt(d[h], a, b); wl += a * win; wr += b * win;
+            d[h] += 1.f - ratio;
+        }
+        cnt += 1.f;
+        if (++wp >= kBuf) wp = 0;
+        const float m = mixSm.tick(tMix) * eng;
+        l = l * (1.f - m) + wl * m;
+        r = r * (1.f - m) + wr * m;
+    }
+private:
+    // a head starts a new grain: the delay it starts from (so it never runs past the write head or off the end
+    // of the buffer during the grain), moved by up to `search` samples to line up with the other head
+    void restart(int h, float ratio) {
+        const float travel = (ratio - 1.f) * grain;                       // > 0: the delay shrinks over the grain
+        float d0 = 4.f + (float)L + (travel > 0.f ? travel : 0.f);
+        const int o = bestOffset(d0, d[1 - h]);
+        d[h] = std::min(d0 + (float)o, (float)(kBuf - 8) - std::max(0.f, -travel));
+    }
+    int bestOffset(float dNew, float dOther) const {
+        if (search < 4 || dOther < (float)L + 2.f) return 0;
+        const int q0 = wp - (int)dOther;                                  // the other head's next stretch
+        double best = -1e30; int bo = 0;
+        auto corr = [&](int o) {
+            const int p0 = wp - (int)dNew - o; double c = 0.0;
+            for (int i = 0; i < L; i += 2) c += (double)bm[(p0 + i) & (kBuf - 1)] * bm[(q0 + i) & (kBuf - 1)];
+            return c;
+        };
+        for (int o = 0; o <= search; o += 4) { const double c = corr(o); if (c > best) { best = c; bo = o; } }
+        const int lo = std::max(0, bo - 3), hi = std::min(search, bo + 3);
+        for (int o = lo; o <= hi; ++o) { const double c = corr(o); if (c > best) { best = c; bo = o; } }
+        return bo;
+    }
+    inline void readAt(float dl, float& a, float& b) const {    // cubic (Hermite) read, dl samples back
+        float pos = (float)wp - dl; while (pos < 0.f) pos += kBuf;
+        const int i1 = (int)pos; const float t = pos - (float)i1;
+        const int i0 = (i1 - 1) & (kBuf - 1), i2 = (i1 + 1) & (kBuf - 1), i3 = (i1 + 2) & (kBuf - 1), j1 = i1 & (kBuf - 1);
+        auto herm = [t](float y0, float y1, float y2, float y3) {
+            const float c1 = 0.5f * (y2 - y0), c2 = y0 - 2.5f * y1 + 2.f * y2 - 0.5f * y3, c3 = 0.5f * (y3 - y0) + 1.5f * (y1 - y2);
+            return ((c3 * t + c2) * t + c1) * t + y1;
+        };
+        a = herm(bl[i0], bl[j1], bl[i2], bl[i3]); b = herm(br[i0], br[j1], br[i2], br[i3]);
+    }
+    float bl[kBuf] = {}, br[kBuf] = {}, bm[kBuf] = {};
+    int wp = 0, L = 384, search = 576;
+    float d[2] = { 64.f, 64.f }, cnt = 0.f;
+    bool secondStarted = false;
+    float semi = 0.f, tSemi = -12.f, glideStep = 1e9f, grain = 2400.f, grainT = 2400.f, hard = 0.f, tMix = 1.f, eng = 0.f, engStep = 0.003f;
+    Smooth mixSm;
+};
+
+// ---------------------------------------------------------------------------------------------
 // Smear: hold the pad and the beat drops out while everything going in smears into a giant reverb that
 // just hangs there. Let go: the dry comes straight back, and the smear drops to TAIL, darkens, and rings
 // out on its own for DECAY seconds. (The live-stream "shout into the void" move.)

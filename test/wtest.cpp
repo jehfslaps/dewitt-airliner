@@ -421,6 +421,22 @@ int main(int argc, char** argv)
             pushParam(slotParam(16, F_TYPE), kTypeEmpty); run(0.05);
         }
 
+        // ------------------------------------------------ PITCH: changes the beat while held; let go = it glides home and frees itself
+        {
+            pushParam(slotParam(17, F_TYPE), typeOfEffect(kFxPitch));
+            pushParam(slotParam(17, F_LATCH), 0);
+            for (int k = 0; k < 5; ++k) pushParam(slotParam(17, F_K1 + k), defaultNorm(kFxPitch, k));
+            run(0.3);
+            pushParam(PAD(17), 1); run(0.3);
+            const Stats held = run(0.7);
+            pushParam(PAD(17), 0); run(0.6);
+            const Stats after = run(0.5);
+            printf("     pitch: held off the dry %.3f (in %.3f), after letting go %.5f, voices %.0f\n", held.diff, held.inRms, after.diff, getv(oVoices));
+            CHECK(held.diff > 0.3f * held.inRms && held.rms > 0.5f * held.inRms, "PITCH held: the beat is shifted, about as loud");
+            CHECK(after.diff < 1e-5f && getv(oVoices) == 0, "PITCH let go: glides home, then the exact dry beat and the voice is free");
+            pushParam(slotParam(17, F_TYPE), kTypeEmpty); run(0.05);
+        }
+
         endlessChecks();
         clickChecks();
         valensChecks();
