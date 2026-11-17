@@ -77,7 +77,7 @@ jobs:
           LABEL: ${{ github.event_name == 'workflow_dispatch' && inputs.label || 'beta' }}
           AIRLINER_ALL: ${{ inputs.airliner_all && '1' || '0' }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID || 'YCD5K76V6N' }}   # slapworx's Team ID (public: it's in every signed file)
           APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
         run: tools/build-mac.sh
 
