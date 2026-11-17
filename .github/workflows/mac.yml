@@ -9,10 +9,11 @@ name: Mac build
 # Secrets are never given to pull requests from forks (this workflow doesn't run on pull requests at all).
 # Signing and notarizing switch on by themselves once these repository secrets exist (Settings > Secrets and
 # variables > Actions), all from the Apple Developer account:
-#   MAC_CERT_P12_BASE64     one .p12 holding the "Developer ID Application" and "Developer ID Installer"
-#                           certificates and their key, base64-encoded (the identities are read from it)
-#   MAC_CERT_PASSWORD       the .p12's password
+#   MAC_APP_P12_BASE64        the "Developer ID Application" certificate + key as a .p12, base64-encoded
+#   MAC_INSTALLER_P12_BASE64  the "Developer ID Installer" certificate + key as a .p12, base64-encoded
+#   MAC_P12_PASSWORD          the password of both .p12 files
 #   APPLE_ID, APPLE_TEAM_ID, APPLE_APP_PASSWORD   (an app-specific password from account.apple.com)
+# (the same names as Mercy's repo; the identities' names are read from the certificates)
 on:
   push:
     branches: [main]
@@ -42,24 +43,32 @@ jobs:
 
       - name: Signing certificates (when the secrets are set)
         env:
-          P12: ${{ secrets.MAC_CERT_P12_BASE64 }}
-          P12_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+          APP_P12: ${{ secrets.MAC_APP_P12_BASE64 }}
+          INST_P12: ${{ secrets.MAC_INSTALLER_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.MAC_P12_PASSWORD }}
         run: |
-          if [ -z "$P12" ]; then echo "no signing secrets: building ad-hoc signed test files"; exit 0; fi
+          if [ -z "$APP_P12" ]; then echo "no signing secrets: building ad-hoc signed test files"; exit 0; fi
           KC="$RUNNER_TEMP/sign.keychain-db"; KP="$(uuidgen)"
-          echo "$P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
           security create-keychain -p "$KP" "$KC"
           security set-keychain-settings -lut 21600 "$KC"
           security unlock-keychain -p "$KP" "$KC"
-          security import "$RUNNER_TEMP/cert.p12" -k "$KC" -P "$P12_PASSWORD" -T /usr/bin/codesign -T /usr/bin/productbuild
+          echo "$APP_P12" | base64 --decode > "$RUNNER_TEMP/app.p12"
+          security import "$RUNNER_TEMP/app.p12" -k "$KC" -P "$P12_PASSWORD" -T /usr/bin/codesign -T /usr/bin/productbuild
+          if [ -n "$INST_P12" ]; then
+            echo "$INST_P12" | base64 --decode > "$RUNNER_TEMP/installer.p12"
+            security import "$RUNNER_TEMP/installer.p12" -k "$KC" -P "$P12_PASSWORD" -T /usr/bin/codesign -T /usr/bin/productbuild
+          fi
+          rm -f "$RUNNER_TEMP"/*.p12
+          # Apple's Developer ID G2 intermediate, so the chain is complete on any runner image
+          curl -fsSL -o "$RUNNER_TEMP/DeveloperIDG2CA.cer" https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer \
+            && security import "$RUNNER_TEMP/DeveloperIDG2CA.cer" -k "$KC" || echo "(couldn't fetch the G2 intermediate; using the system's)"
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KP" "$KC" > /dev/null
           security list-keychains -d user -s "$KC" $(security list-keychains -d user | tr -d '"')
-          rm -f "$RUNNER_TEMP/cert.p12"
           security find-identity -v "$KC"
-          # the two identities' full names, e.g. "Developer ID Application: NAME (TEAMID)"
+          # the identities' full names, e.g. "Developer ID Application: NAME (TEAMID)"
           APP=$(security find-identity -v -p codesigning "$KC" | grep -o '"Developer ID Application: [^"]*"' | head -1 | tr -d '"')
           INST=$(security find-identity -v "$KC" | grep -o '"Developer ID Installer: [^"]*"' | head -1 | tr -d '"')
-          [ -n "$APP" ] && [ -n "$INST" ] || { echo "the certificate file needs both Developer ID Application and Developer ID Installer"; exit 1; }
+          [ -n "$APP" ] && [ -n "$INST" ] || { echo "need both the Developer ID Application and Developer ID Installer certificates"; exit 1; }
           echo "MAC_SIGN_APP=$APP" >> "$GITHUB_ENV"
           echo "MAC_SIGN_INSTALLER=$INST" >> "$GITHUB_ENV"
 
