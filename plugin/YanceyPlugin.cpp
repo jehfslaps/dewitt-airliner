@@ -261,7 +261,10 @@ struct Voice {
 struct SamplePad {
     std::atomic<SampleData*> data { nullptr };
     std::atomic<bool> stopReq { false };
-    std::vector<SampleData*> retired;      // freed on a later state change, never on the audio thread
+    // Swapped-out samples wait here until the audio thread has finished a block that started after the swap,
+    // so a sample is never freed while a block is still reading it. Never freed on the audio thread.
+    std::atomic<uint32_t> swapSeq { 0 }, doneSeq { 0 };
+    std::vector<std::pair<SampleData*, uint32_t> > retired;
     double pos = 0.0, fadePos = 0.0;
     bool playing = false, fading = false, fresh = false;
     float fadeGain = 0.f;
@@ -273,13 +276,22 @@ struct SamplePad {
         pos = 0.0; playing = true;
     }
     void set(SampleData* sd) {
-        for (SampleData* old : retired) delete old;
-        retired.clear();
-        SampleData* old = data.exchange(sd);
-        if (old) retired.push_back(old);
+        freeRetired();
+        SampleData* old = data.exchange(sd, std::memory_order_acq_rel);
+        const uint32_t seq = swapSeq.fetch_add(1, std::memory_order_acq_rel) + 1;
+        if (old) retired.push_back(std::make_pair(old, seq));
         stopReq.store(true);
     }
-    ~SamplePad() { delete data.load(); for (SampleData* o : retired) delete o; }
+    // audio thread: call at the start of a block (before reading data) and at its end
+    uint32_t blockStart() const { return swapSeq.load(std::memory_order_acquire); }
+    void blockDone(uint32_t seenAtStart) { doneSeq.store(seenAtStart, std::memory_order_release); }
+    void freeRetired() {
+        const uint32_t done = doneSeq.load(std::memory_order_acquire);
+        for (size_t i = 0; i < retired.size();)
+            if ((int32_t)(done - retired[i].second) >= 0) { delete retired[i].first; retired.erase(retired.begin() + (long)i); }
+            else ++i;
+    }
+    ~SamplePad() { delete data.load(); for (auto& o : retired) delete o.first; }
 };
 
 // A beat pad points at audio loaded (in the background) from a linked file. The audio lives in the
@@ -301,7 +313,6 @@ public:
         : Plugin(kParamCount, 0, kStateCount)
     {
         for (int k = 0; k < kNumSlots; ++k) { std::snprintf(gSmpKeys[k], sizeof(gSmpKeys[k]), "smp%d", k); std::snprintf(gBeatKeys[k], sizeof(gBeatKeys[k]), "beat%d", k); }
-        fLoader = std::thread([this] { loaderLoop(); });
         for (int i = 0; i < kParamCount; ++i) fParams[i] = fLive[i] = paramDefault(i);
         for (int s = 0; s < kNumSlots; ++s) { fLatched[s] = fHeld[s] = fActive[s] = false; fSmpPos[s] = -1.f; }
         for (int p = 0; p < kNumPads; ++p) { fPadMidi[p] = fPadNote[p] = fPadPrev[p] = false; fPadAmt[p] = 1.f; }
@@ -383,7 +394,7 @@ protected:
     const char* getLabel() const override { return "Dewitt"; }
     const char* getDescription() const override { return "Pad effects for live beat sets: banks of pads with stackable effects, moves, samples and beats."; }
     const char* getMaker() const override { return "slapworx"; }
-    const char* getHomePage() const override { return "https://example.com/howard"; }
+    const char* getHomePage() const override { return "https://slapworx.net/dewitt/"; }
     const char* getLicense() const override { return "Proprietary"; }
     uint32_t getVersion() const override { return d_version(1, 2, 0); }
     int64_t getUniqueId() const override { return d_cconst('H', 'w', 'r', 'd'); }
@@ -576,7 +587,12 @@ protected:
                 BeatData* d = path.empty() ? nullptr : storeFind(path);
                 fBeats[k].data.store(d, std::memory_order_release);
                 fBeatReady[k].store(d != nullptr);
-                if (!path.empty() && d == nullptr) { fLoadQueue.push_back(std::make_pair(k, path)); fLoadCv.notify_one(); }
+                if (!path.empty() && d == nullptr) {
+                    // the loader thread starts with the first beat that needs it, so an instance that never
+                    // loads a beat (like the one DPF keeps for plug-in info) never owns a thread to wait for
+                    if (!fLoader.joinable()) fLoader = std::thread([this] { loaderLoop(); });
+                    fLoadQueue.push_back(std::make_pair(k, path)); fLoadCv.notify_one();
+                }
                 storeCollect();
             }
             return;
@@ -689,7 +705,13 @@ protected:
     }
 
     void sampleRateChanged(const double newSampleRate) override { prepareAll(newSampleRate); }
-    void activate() override { prepareAll(getSampleRate()); }
+    void activate() override
+    {
+        // a restart (new buffer size or sample rate) can swallow note-offs: let go of every pad held by MIDI
+        // (latched pads stay latched)
+        releaseMidiHeld();
+        prepareAll(getSampleRate());
+    }
 
     void run(const float** inputs, float** outputs, uint32_t frames,
              const MidiEvent* midiEvents, uint32_t midiEventCount) override
@@ -731,9 +753,11 @@ protected:
         pushBlock();
 
         SampleData* smp[kNumSlots];
+        uint32_t smpSeq[kNumSlots];
         float volT[kNumSlots];
         for (int k = 0; k < kNumSlots; ++k) {
             SamplePad& pd = fSmp[k];
+            smpSeq[k] = pd.blockStart();
             if (pd.stopReq.exchange(false)) pd.playing = pd.fading = false;
             smp[k] = pd.data.load(std::memory_order_acquire);
             volT[k] = padVolGain(fLive[slotParam(k, F_VOL)]);
@@ -918,6 +942,7 @@ protected:
         for (int k = 0; k < kNumSlots; ++k) {
             const SampleData* sd = smp[k];
             fSmpPos[k] = (sd && fSmp[k].playing && sd->frames > 0) ? (float)(fSmp[k].pos / sd->frames) : -1.f;
+            fSmp[k].blockDone(smpSeq[k]);           // done with whatever this block read
         }
         if (fBeatCur >= 0 && fBeatCurData && fBeatCurData->frames > 0) fSmpPos[fBeatCur] = (float)(fBeatPos / fBeatCurData->frames);
         fSampleClock += frames;
@@ -1013,6 +1038,12 @@ private:
             || (kEffects[e].tail && vc.slot >= 0 && effectOf(fParams, vc.slot) == e && fParams[slotParam(vc.slot, F_REL)] > 0.5f);
         if (ring) { vc.state = kVoiceRing; vc.quietFor = 0.f; }
         else { vc.state = kVoiceCut; vc.cut = 1.f; }
+    }
+
+    void releaseMidiHeld()
+    {
+        for (int p = 0; p < kNumPads; ++p) fPadMidi[p] = fPadNote[p] = false;
+        for (int& h : fFollowHeld) h = -1;
     }
 
     void allOff()
@@ -1442,6 +1473,7 @@ private:
         }
         if (!noteOn && !noteOff && !cc) return;
         ++fMidiSeq;
+        if (cc && (d1 == 120 || d1 == 123)) { releaseMidiHeld(); return; }   // All Sound Off / All Notes Off
         const uint64_t when = fSampleClock + e.frame;
 
         // Note Repeat: one pad firing many times, faster than fingers do

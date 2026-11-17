@@ -434,13 +434,15 @@ static LRESULT CALLBACK dropWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     if (msg == WM_DROPFILES) {
         HDROP drop = (HDROP)wp;
         POINT pt; DragQueryPoint(drop, &pt);
+        RECT rc; GetClientRect(hwnd, &rc);
+        const float cw = (float)std::max(1L, rc.right - rc.left), ch = (float)std::max(1L, rc.bottom - rc.top);
         const UINT len = DragQueryFileW(drop, 0, nullptr, 0);
         if (len > 0) {
             std::wstring w(len + 1, L'\0');
             DragQueryFileW(drop, 0, &w[0], len + 1);
             w.resize(len);
             const std::string path = toUtf8(w.c_str());
-            it->second.cb(it->second.ctx, path.c_str(), (int)pt.x, (int)pt.y);
+            it->second.cb(it->second.ctx, path.c_str(), (float)pt.x / cw, (float)pt.y / ch);
         }
         DragFinish(drop);
         return 0;
@@ -449,6 +451,7 @@ static LRESULT CALLBACK dropWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 }
 #endif
 
+#ifndef __APPLE__   // the Mac version is in YanceyDropMac.mm
 bool installFileDrop(uintptr_t nativeWindow, DropCallback cb, void* ctx)
 {
 #ifdef _WIN32
@@ -480,5 +483,6 @@ void removeFileDrop(uintptr_t nativeWindow)
     (void)nativeWindow;
 #endif
 }
+#endif
 
 } // namespace yancey

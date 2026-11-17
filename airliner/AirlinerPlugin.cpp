@@ -65,7 +65,7 @@ protected:
         return d;
     }
     const char* getMaker() const override { return "slapworx"; }
-    const char* getHomePage() const override { return "https://example.com/airliner"; }
+    const char* getHomePage() const override { return "https://slapworx.net/"; }
     const char* getLicense() const override { return "Proprietary"; }
     uint32_t getVersion() const override { return d_version(1, 0, 0); }
     int64_t getUniqueId() const override

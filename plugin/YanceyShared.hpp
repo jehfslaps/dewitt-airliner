@@ -16,8 +16,10 @@ struct YanceyLive {
     YanceyLive() { for (int j = 0; j < kNumJobs; ++j) job[j].store(0.f); for (int s = 0; s < kNumSlots; ++s) amt[s].store(0.f); }
 };
 
-inline std::mutex& yLiveMutex() { static std::mutex m; return m; }
-inline std::vector<std::pair<const void*, YanceyLive*> >& yLiveReg() { static std::vector<std::pair<const void*, YanceyLive*> > r; return r; }
+// Never destroyed on purpose: a host can quit while a plug-in instance (DPF keeps one for its info) still
+// exists, and that instance unregisters itself after ordinary statics are already gone.
+inline std::mutex& yLiveMutex() { static std::mutex* m = new std::mutex(); return *m; }
+inline std::vector<std::pair<const void*, YanceyLive*> >& yLiveReg() { static auto* r = new std::vector<std::pair<const void*, YanceyLive*> >(); return *r; }
 inline void yLiveAdd(const void* key, YanceyLive* l) { std::lock_guard<std::mutex> g(yLiveMutex()); yLiveReg().push_back(std::make_pair(key, l)); }
 inline void yLiveRemove(const void* key)
 {

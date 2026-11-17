@@ -51,7 +51,7 @@ void returnKeyboard(uintptr_t nativeWindow, uintptr_t previous);
 std::string saveNameDialog(uintptr_t owner, const char* dir, const char* suggested, const char* ext, const char* title);
 
 // accept files dropped onto the plug-in window (Windows only); x/y are window pixels
-typedef void (*DropCallback)(void* ctx, const char* utf8Path, int x, int y);
+typedef void (*DropCallback)(void* ctx, const char* utf8Path, float fx, float fy);   // fx, fy: 0..1 across the window
 bool installFileDrop(uintptr_t nativeWindow, DropCallback cb, void* ctx);
 void removeFileDrop(uintptr_t nativeWindow);
 

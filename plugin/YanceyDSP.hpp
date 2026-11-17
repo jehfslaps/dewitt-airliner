@@ -210,6 +210,7 @@ public:
         float peak = 0.f;
         const float rp = (float)w - d;
         float rpos = rp < 0.f ? rp + (float)size : rp;
+        if (rpos >= (float)size) rpos -= (float)size;      // rounding can land exactly on the end
         const int i0 = (int)rpos;
         const float t = rpos - (float)i0;
         for (int c = 0; c < 2; ++c) {
@@ -589,6 +590,7 @@ public:
         {
             float rp = (float)dw - std::max(2.f, base + mod);
             if (rp < 0.f) rp += (float)dsize;
+            if (rp >= (float)dsize) rp -= (float)dsize;      // rounding can land exactly on the end
             const int i0 = (int)rp; const float t = rp - (float)i0;
             const int im1 = (i0 - 1 + dsize) % dsize, i1 = (i0 + 1) % dsize, i2 = (i0 + 2) % dsize;
             yl = hermite(dl[0][im1], dl[0][i0], dl[0][i1], dl[0][i2], t);
@@ -735,6 +737,7 @@ public:
         float yl = l, yr = r;
         if (back > 0.0005) {
             double rp = (double)dw - back; if (rp < 0.0) rp += dsize;
+            if (rp >= (double)dsize) rp -= (double)dsize;      // rounding can land exactly on the end
             const int i0 = (int)rp; const float t = (float)(rp - i0);
             const int i1 = (i0 + 1) % dsize;
             yl = dl[0][i0] + (dl[0][i1] - dl[0][i0]) * t;
@@ -940,6 +943,7 @@ public:
                 auto tap = [&](float dms) {
                     float rp = (float)w - dms * 0.001f * fs;
                     if (rp < 0.f) rp += (float)size;
+                    if (rp >= (float)size) rp -= (float)size;      // rounding can land exactly on the end
                     const int i0 = (int)rp; const float t = rp - (float)i0;
                     return hermite(b[(i0 - 1 + size) % size], b[i0], b[(i0 + 1) % size], b[(i0 + 2) % size], t);
                 };
@@ -1044,6 +1048,7 @@ public:
                 const float dms = 0.6f + range * 9.f * tri;
                 float rp = (float)w - dms * 0.001f * fs;
                 if (rp < 0.f) rp += (float)size;
+                if (rp >= (float)size) rp -= (float)size;      // rounding can land exactly on the end
                 const int i0 = (int)rp; const float t = rp - (float)i0;
                 float* b = cb[c].data();
                 const float d = hermite(b[(i0 - 1 + size) % size], b[i0], b[(i0 + 1) % size], b[(i0 + 2) % size], t);
@@ -1089,6 +1094,7 @@ struct History {
         if (back > maxBack()) back = maxBack();
         double p = (double)w - 1.0 - back;
         while (p < 0.0) p += (double)size;
+        if (p >= (double)size) p -= (double)size;      // rounding can land exactly on the end
         const int i0 = (int)p;
         const float t = (float)(p - (double)i0);
         const float* B = b[c].data();
@@ -1238,6 +1244,7 @@ public:
         const float mod = wd * wd * 0.0035f * fs * (0.75f * std::sin(2.f * kPi * wowPh) + 0.25f * std::max(-1.f, std::min(1.f, drift.lp(rng.bi()) * 8.f)));
         float rp = (float)w - (d + mod);
         while (rp < 0.f) rp += (float)size;
+        if (rp >= (float)size) rp -= (float)size;      // rounding can land exactly on the end
         const int i0 = (int)rp; const float t = rp - (float)i0;
         const float dryG = mixDry(mix), wetG = mixWet(mix);
         float* io[2] = { &l, &r };
@@ -1301,6 +1308,7 @@ public:
         const float d = std::max(16.f, timeSm.tick(tTime)), fb = fbSm.tick(tFb), mix = mixSm.tick(tMix);
         float rp = (float)w - d;
         while (rp < 0.f) rp += (float)size;
+        if (rp >= (float)size) rp -= (float)size;      // rounding can land exactly on the end
         const int i0 = (int)rp; const float t = rp - (float)i0;
         float e[2];
         for (int c = 0; c < 2; ++c) {
@@ -1361,6 +1369,7 @@ public:
             const float d = len[i] - modDepth * (1.f + std::sin(2.f * kPi * ph[i]));
             float rp = (float)wi[i] - std::max(4.f, d);
             while (rp < 0.f) rp += (float)n[i];
+            if (rp >= (float)n[i]) rp -= (float)n[i];      // rounding can land exactly on the end
             const int i0 = (int)rp; const float t = rp - (float)i0;
             const int i1 = i0 + 1 < n[i] ? i0 + 1 : 0;
             const float y = line[i][i0] + (line[i][i1] - line[i][i0]) * t;
@@ -2202,6 +2211,7 @@ public:
         const float a = ramp.tick(on);
         const float t = tSm.tick(tTime), fb = fbSm.tick(tFb);
         float rp = (float)w - t; if (rp < 0.f) rp += (float)size;
+        if (rp >= (float)size) rp -= (float)size;      // rounding can land exactly on the end
         const int i0 = (int)rp; const float fr = rp - (float)i0;
         auto rd = [&](int c) { const float* b = d[c].data(); return hermite(b[(i0 - 1 + size) % size], b[i0], b[(i0 + 1) % size], b[(i0 + 2) % size], fr); };
         const float el = rd(0), er = rd(1);

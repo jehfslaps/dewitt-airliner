@@ -216,12 +216,12 @@ static constexpr float kPanX = 200.f, kPanY = 50.f, kPanW = 680.f, kPanH = 540.f
 enum { kActLearn = 1, kActCancelLearn, kActClear, kActReset, kActNotesOff, kActOrderTop, kActOrderBottom,
        kActLoadSmp, kActRemoveSmp, kActSetup, kActKnobTypeMenu, kActNotesMenu, kActResetSize, kActResetPads, kActFactory,
        kActSavePadPreset, kActLoadPadPresetMenu, kActSaveSet, kActSaveSetAs, kActDeleteSet, kActAddPage, kActRemovePage,
-       kActNote0 = 20, kActKnob0 = 40, kActSpeed0 = 46, kActJump0 = 50, kActGrid0 = 53, kActRenameSet = 57, kActLoadBeat = 58, kActRemoveBeat = 59, kActCollect = 60, kActRelink = 61, kActFeel0 = 62, kActFollow = 65, kActNewPattern = 70, kActKCount0 = 80, kActType0 = 100, kActPadPreset0 = 200, kActSet0 = 300 };
+       kActNote0 = 20, kActKnob0 = 40, kActSpeed0 = 46, kActJump0 = 50, kActGrid0 = 53, kActRenameSet = 57, kActLoadBeat = 58, kActRemoveBeat = 59, kActCollect = 60, kActRelink = 61, kActFeel0 = 62, kActFollow = 65, kActSetPageNext = 66, kActSetPagePrev = 67, kActPadPageNext = 68, kActPadPagePrev = 69, kActNewPattern = 70, kActKCount0 = 80, kActType0 = 100, kActPadPreset0 = 200, kActSet0 = 1000 };
 enum { kMenuPad = 0, kMenuKnob, kMenuType, kMenuLearn, kMenuNotes, kMenuSettings, kMenuKnobType, kMenuPadPresets, kMenuSets };
 
 // the setup card's screens
 enum { kScrHome = 0, kScrHear, kScrBackup, kScrPads, kScrMorePads, kScrKnobs, kScrDone, kScrConfirmPads, kScrConfirmFactory, kScrName,
-       kScrChoose, kScrKeys, kScrBankFilled, kScrSameBank };
+       kScrChoose, kScrKeys, kScrBankFilled, kScrSameBank, kScrConfirmReplace };
 
 // the built-in set: the default layout on bank A, banks B and C empty
 // the built-in sets: Default, then the groups in YanceySets.hpp
@@ -1815,6 +1815,10 @@ protected:
             if (fBpmEdit < 0) add(w * 0.5f - 70.f, 422.f, 140.f, 22.f, bWinDialog, "use the Windows dialog", 3);
 #endif
             break;
+        case kScrConfirmReplace:
+            add(w * 0.5f - 210.f, 330.f, 200.f, 44.f, bCancel, "CANCEL", 0);
+            add(w * 0.5f + 10.f, 330.f, 200.f, 44.f, bConfirm, "REPLACE", 2);
+            break;
         case kScrConfirmPads: case kScrConfirmFactory:
             add(w * 0.5f - 210.f, 360.f, 200.f, 44.f, bCancel, "CANCEL", 0);
             add(w * 0.5f + 10.f, 360.f, 200.f, 44.f, bConfirm, fScr == kScrConfirmPads ? "RESET PADS" : "RESTORE DEFAULTS", 2);
@@ -2075,6 +2079,7 @@ protected:
         if (fScr == kScrConfirmPads) title = "RESET THIS PROJECT'S PADS?";
         if (fScr == kScrName) title = fBpmEdit >= 0 ? "BEAT TEMPO" : "SAVE PRESET";
         if (fScr == kScrConfirmFactory) title = "START FRESH?";
+        if (fScr == kScrConfirmReplace) title = "REPLACE IT?";
         drawText(fFontHeavy, 16.f, ink, 28.f, 38.f, NanoVG::ALIGN_LEFT | NanoVG::ALIGN_MIDDLE, title, 0.4f);
         beginPath(); circle(w - 36.f, 36.f, 14.f);
         strokeColor(ink); strokeWidth(2.f); stroke();
@@ -2273,7 +2278,11 @@ protected:
             }
             drawText(fFontMed, 12.f, soft, cx, 286.f, NanoVG::ALIGN_CENTER | NanoVG::ALIGN_MIDDLE,
                      fBpmEdit >= 0 ? "Type the beat's BPM (for example 92 or 92.5) and press Enter." : "Type a name and press Enter. Saved on this computer, ready in every project.");
+#ifdef _WIN32
             if (fBpmEdit < 0) drawText(fFontMed, 11.5f, soft, cx, 412.f, NanoVG::ALIGN_CENTER | NanoVG::ALIGN_MIDDLE, "Typing not showing up? Turn off your DAW's computer-keyboard piano, or");
+#else
+            if (fBpmEdit < 0) drawText(fFontMed, 11.5f, soft, cx, 412.f, NanoVG::ALIGN_CENTER | NanoVG::ALIGN_MIDDLE, "Typing not showing up? Click the name box, or turn off your DAW's computer-keyboard piano.");
+#endif
             break;
         }
         case kScrDone:
@@ -2283,6 +2292,14 @@ protected:
             drawText(fFontHeavy, 28.f, ink, cx, 326.f, NanoVG::ALIGN_CENTER | NanoVG::ALIGN_MIDDLE, "You're set.", 0.1f);
             drawText(fFontMed, 13.f, soft, cx, 362.f, NanoVG::ALIGN_CENTER | NanoVG::ALIGN_MIDDLE, "This setup is saved on this computer and used in every project.");
             break;
+        case kScrConfirmReplace: {
+            char msg[160];
+            std::snprintf(msg, sizeof(msg), fNameForPad >= 0 ? "You already have a pad preset called \"%s\". Replace it with this one?"
+                                                              : "You already have a set called \"%s\". Replace it with this one?", fReplaceName.c_str());
+            drawParagraph(msg, cx, 210.f, 520.f, 15.f, ink, fFontMed);
+            drawText(fFontMed, 12.f, soft, cx, 280.f, NanoVG::ALIGN_CENTER | NanoVG::ALIGN_MIDDLE, "Pick CANCEL to go back without saving.");
+            break;
+        }
         case kScrConfirmPads:
             drawParagraph("Puts every pad on every page back to the starting layout in this project, and removes samples from pads. "
                           "Your controller setup and saved presets stay as they are. You can undo this.", cx, 200.f, 520.f, 13.5f, ink, fFontMed);
@@ -2321,7 +2338,7 @@ protected:
     // --------------------------------------------------------------------------------------------
     // Menus
 
-    struct MenuItem { char label[32]; int act; bool header; int col; };
+    struct MenuItem { char label[64]; int act; bool header; int col; };
 
     float menuItemH(int i) const { return fMenuItems[i].header ? 22.f : 26.f; }
     float menuTop() const { return fMenuRY + 6.f + (fMenuHeader[0] ? (fMenuSub[0] ? 40.f : 26.f) : 0.f); }
@@ -2409,7 +2426,8 @@ protected:
             const float cover = ha * clamp01(ox / (cw - 12.f)) * clamp01(oy / ih);
             const bool hov = cover > 0.5f;
             const Color c = Color(fT.menuText, fT.menuHoverText, cover);
-            drawText(fFontBold, 12.f, it.act == kActFactory && !hov ? kRedAcc : c, cx0 + 14.f, iy + ih * 0.5f, NanoVG::ALIGN_LEFT | NanoVG::ALIGN_MIDDLE, it.label);
+            drawText(fFontBold, 12.f, it.act == kActFactory && !hov ? kRedAcc : c, cx0 + 14.f, iy + ih * 0.5f, NanoVG::ALIGN_LEFT | NanoVG::ALIGN_MIDDLE,
+                     fitText(fFontBold, 12.f, it.label, cw - 44.f, 0.f).c_str());
             if (fMenuChecked == i || fMenuChecked2 == i || fMenuChecked3 == i || fMenuChecked4 == i || fMenuChecked5 == i) {
                 const float ccx = cx0 + cw - 22.f, ccy = iy + ih * 0.5f;
                 beginPath();
@@ -2551,7 +2569,13 @@ protected:
         listFiles(presetsDir("Pads").c_str(), ".ypad", fPadPresetNames);
         std::snprintf(fMenuHeader, sizeof(fMenuHeader), "PAD PRESETS");
         if (fPadPresetNames.empty()) std::snprintf(fMenuSub, sizeof(fMenuSub), "None saved yet");
-        for (size_t i = 0; i < fPadPresetNames.size() && i < 30; ++i) menuAdd(fPadPresetNames[i].c_str(), kActPadPreset0 + (int)i);
+        // long lists go on pages, so the menu always fits the window
+        const int per = 16, n = (int)fPadPresetNames.size(), pages = std::max(1, (n + per - 1) / per);
+        fPadPresetPage = std::max(0, std::min(fPadPresetPage, pages - 1));
+        if (pages > 1) std::snprintf(fMenuSub, sizeof(fMenuSub), "Page %d of %d", fPadPresetPage + 1, pages);
+        if (fPadPresetPage > 0) menuAdd("< Previous page", kActPadPagePrev);
+        for (int i = fPadPresetPage * per; i < n && i < (fPadPresetPage + 1) * per; ++i) menuAdd(fPadPresetNames[(size_t)i].c_str(), kActPadPreset0 + i);
+        if (fPadPresetPage < pages - 1) menuAdd("Next page >", kActPadPageNext);
         menuFinish();
     }
 
@@ -2572,11 +2596,18 @@ protected:
         }
         menuNextColumn();
         if (!fUserSets.empty()) {
-            menuAdd("YOUR SETS", 0, true);
-            for (size_t i = 0; i < fUserSets.size() && i < 12; ++i) {
-                if (fPresetUser && fUserSets[i] == fPresetName) fMenuChecked = fMenuCount;
-                menuAdd(fUserSets[i].c_str(), kActSet0 + numFactorySets() + (int)i);
+            // ten at a time, so the column always fits the window
+            const int per = 10, n = (int)fUserSets.size(), pages = std::max(1, (n + per - 1) / per);
+            fSetPage = std::max(0, std::min(fSetPage, pages - 1));
+            char hd[32];
+            if (pages > 1) std::snprintf(hd, sizeof(hd), "YOUR SETS  %d/%d", fSetPage + 1, pages); else std::snprintf(hd, sizeof(hd), "YOUR SETS");
+            menuAdd(hd, 0, true);
+            if (fSetPage > 0) menuAdd("< Previous sets", kActSetPagePrev);
+            for (int i = fSetPage * per; i < n && i < (fSetPage + 1) * per; ++i) {
+                if (fPresetUser && fUserSets[(size_t)i] == fPresetName) fMenuChecked = fMenuCount;
+                menuAdd(fUserSets[(size_t)i].c_str(), kActSet0 + numFactorySets() + i);
             }
+            if (fSetPage < pages - 1) menuAdd("More sets >", kActSetPageNext);
         }
         menuAdd("SAVE", 0, true);
         if (fPresetUser) menuAdd("Save changes", kActSaveSet);
@@ -2673,6 +2704,8 @@ protected:
         const int target = fMenuTarget;
         const int kind = fMenuKind;
         if (act >= kActSet0) { loadSetByIndex(act - kActSet0); return; }
+        if (act == kActSetPageNext || act == kActSetPagePrev) { fSetPage += act == kActSetPageNext ? 1 : -1; openSetsMenu(); return; }
+        if (act == kActPadPageNext || act == kActPadPagePrev) { fPadPresetPage += act == kActPadPageNext ? 1 : -1; openPadPresetMenu(target, fMenuX, fMenuY); return; }
         if (act >= kActPadPreset0) { if ((size_t)(act - kActPadPreset0) < fPadPresetNames.size()) loadPadPreset(target, fPadPresetNames[act - kActPadPreset0]); return; }
         if (act >= kActType0) { setSlotType(target, act - kActType0); return; }
         if (act >= kActKnob0 && act < kActKnob0 + kNumKnobModes) { setKnobMode(act - kActKnob0); return; }
@@ -2713,7 +2746,7 @@ protected:
         case kActCollect: collectBeats(); break;
         case kActRemoveSmp: pushUndo(); removeSample(slot); break;
         case kActSavePadPreset: startNaming(slot); break;
-        case kActLoadPadPresetMenu: openPadPresetMenu(slot, fMouseX, fMouseY); break;
+        case kActLoadPadPresetMenu: fPadPresetPage = 0; openPadPresetMenu(slot, fMouseX, fMouseY); break;
         case kActNotesOff: setNoteStart(-1); break;
         case kActOrderTop: setNoteOrder(0); break;
         case kActOrderBottom: setNoteOrder(1); break;
@@ -2786,7 +2819,12 @@ protected:
             if (my >= kPresetY && my <= kPresetY + kPresetH && mx >= kPresetX && mx <= kPresetX + kPresetW) {
                 if (mx < kPresetX + 32.f) stepSet(-1);
                 else if (mx > kPresetX + kPresetW - 32.f) stepSet(1);
-                else openSetsMenu();
+                else {
+                    refreshSetList();
+                    fSetPage = 0;
+                    if (fPresetUser) for (size_t i = 0; i < fUserSets.size(); ++i) if (fUserSets[i] == fPresetName) fSetPage = (int)i / 10;
+                    openSetsMenu();
+                }
                 return true;
             }
             if (hitNotes(mx, my)) { if (fNoteStart < 0) setNoteStart(36); else openNotesMenu(kNotesX, kNotesY + kNotesH + 6.f); return true; }
@@ -2889,7 +2927,7 @@ protected:
                     for (int i = 0; i < n; ++i) if (i != cur) order[k++] = fPosSlot[i];
                     Spring px[kPadsPerPage], py[kPadsPerPage];
                     int from[kPadsPerPage];
-                    for (int i = 0, j = 0; i < n; ++i) from[i] = (i == to) ? cur : -1;
+                    for (int i = 0; i < n; ++i) from[i] = (i == to) ? cur : -1;
                     k = 0;
                     int newPos[kPadsPerPage];
                     for (int i = 0; i < n; ++i) newPos[i] = (i == to) ? dragged : order[k++];
@@ -3013,7 +3051,7 @@ protected:
         const float w = kPanW, h = kPanH;
         if ((lx - (w - 36.f)) * (lx - (w - 36.f)) + (ly - 36.f) * (ly - 36.f) <= 18.f * 18.f) { closeSetup(); return; }
         if (lx < 0.f || lx > w || ly < 0.f || ly > h) { if (!fNaming) closeSetup(); return; }
-        if (fScr == kScrName && ly >= 205.f && ly <= 263.f) { fKbPrev = grabKeyboard(fNativeWin); wake(); return; }
+        if (fScr == kScrName && ly >= 205.f && ly <= 263.f) { fKbPrev = takeKeyboard(); wake(); return; }
         if (fScr == kScrHome && ly >= 296.f && ly <= 326.f && lx >= 24.f && lx <= w - 24.f) {
             setKnobMode(clampi((int)((lx - 24.f) / ((w - 48.f) / (float)kNumKnobModes)), 0, kNumKnobModes - 1));
             return;
@@ -3100,10 +3138,14 @@ protected:
                 const bool pad = fNameForPad >= 0;
                 const std::string nm = saveNameDialog(fNativeWin, presetsDir(pad ? "Pads" : "Sets").c_str(), fNameBuf, pad ? ".ypad" : ".yset",
                                                       pad ? "Save pad preset" : "Save set");
-                if (!nm.empty()) { std::snprintf(fNameBuf, sizeof(fNameBuf), "%s", nm.c_str()); fNameFresh = false; finishNaming(); }
+                if (!nm.empty()) { std::snprintf(fNameBuf, sizeof(fNameBuf), "%s", nm.c_str()); fNameFresh = false; fNameConfirmed = true; finishNaming(); }
                 break;
             }
-            case bConfirm: if (fScr == kScrConfirmPads) { resetProjectPads(); closeSetup(); } else factoryReset(); break;
+            case bConfirm:
+                if (fScr == kScrConfirmReplace) { saveNamed(fReplaceName); closeSetup(); }
+                else if (fScr == kScrConfirmPads) { resetProjectPads(); closeSetup(); }
+                else factoryReset();
+                break;
             default: break;
             }
             wake();
@@ -3270,6 +3312,16 @@ protected:
         Prefs up; up.kmode = m; writePrefs(up);
         bumpController();
         wake();
+    }
+    // typing goes into the name box, not to the DAW
+    uintptr_t takeKeyboard()
+    {
+#ifdef _WIN32
+        return grabKeyboard(fNativeWin);
+#else
+        getWindow().focus();        // Mac: makes the plug-in view the key view (the host's window stays in front)
+        return 0;
+#endif
     }
     void markWelcomed() { fWelcomed = true; Prefs up; up.welcomed = 1; writePrefs(up); }
     void showToast(const char* msg) { std::snprintf(fToast, sizeof(fToast), "%s", msg); fToastUntil = now() + 4.5; wake(); }
@@ -3461,11 +3513,11 @@ protected:
     }
     void removeSample(int s) { setSampleState(s, nullptr); wake(); }
 
-    static void onFileDropped(void* ctx, const char* path, int px, int py)
+    static void onFileDropped(void* ctx, const char* path, float fx, float fy)
     {
         YanceyUI* const ui = static_cast<YanceyUI*>(ctx);
         const float sc = (float)ui->getWidth() / kW;
-        const float x = px / sc, y = py / sc;
+        const float x = fx * kW, y = fy * (float)ui->getHeight() / sc;
         int q;
         if (ui->hitGridPad(x, y, q)) { const int s = ui->slotAtGrid(q); if (s >= 0) { ui->pushUndo(); ui->loadAudio(s, path, false); } }
         else if (ui->hitDetail(x, y)) { ui->pushUndo(); ui->loadAudio(ui->fSel, path, false); }
@@ -3601,7 +3653,7 @@ protected:
         std::snprintf(fNameBuf, sizeof(fNameBuf), "%.1f", fBeatInfo[s].bpm);
         fNaming = true; fNameFresh = true;
         openSetup(kScrName);
-        fKbPrev = grabKeyboard(fNativeWin);
+        fKbPrev = takeKeyboard();
     }
 
     // ------------------------------------------------------------------------------ settings
@@ -4057,7 +4109,7 @@ protected:
         } else std::snprintf(fNameBuf, sizeof(fNameBuf), "%s", fPresetUser ? fPresetName : "My set");
         fNaming = true; fNameFresh = true;
         openSetup(kScrName);
-        fKbPrev = grabKeyboard(fNativeWin);      // typing goes into the name box, not to FL
+        fKbPrev = takeKeyboard();      // typing goes into the name box, not to FL
     }
     void finishNaming()
     {
@@ -4069,21 +4121,59 @@ protected:
             closeSetup();
             return;
         }
-        std::string nm = fNameBuf;
-        while (!nm.empty() && nm.back() == ' ') nm.pop_back();
+        const std::string nm = safeFileName(fNameBuf);
         if (nm.empty()) return;
+        // saving over another saved set or pad preset: ask first (re-saving the set you're on doesn't ask)
+        const bool pad = fNameForPad >= 0;
+        const bool itself = !pad && fPresetUser && sameName(nm, fPresetName);
+        const std::string dir = presetsDir(pad ? "Pads" : "Sets");
+        if (!fNameConfirmed && !itself && !dir.empty() && fileExists((dir + kPathSep + nm + (pad ? ".ypad" : ".yset")).c_str())) {
+            if (fNaming) { returnKeyboard(fNativeWin, fKbPrev); fNaming = false; }
+            fReplaceName = nm;
+            fScr = kScrConfirmReplace;
+            wake();
+            return;
+        }
+        saveNamed(nm);
+        closeSetup();
+    }
+    void saveNamed(const std::string& nm)
+    {
+        fNameConfirmed = false;
         if (fNameForPad >= 0) {
             const std::string dir = presetsDir("Pads");
             if (dir.empty() || !writeFileBytes((dir + kPathSep + nm + ".ypad").c_str(), serializePad(fNameForPad))) showToast("Couldn't save the pad preset.");
             else { char b[96]; std::snprintf(b, sizeof(b), "Saved pad preset \"%s\".", nm.c_str()); showToast(b); }
         } else {
             const std::string old = fPresetName;
-            const bool rename = fRenaming && fPresetUser && old != nm;
+            // a rename that only changes capitals is the same file on Windows and Mac: don't delete it afterwards
+            const bool rename = fRenaming && fPresetUser && !sameName(old, nm);
             saveSet(nm.c_str());
             if (rename) removeFilePath((presetsDir("Sets") + kPathSep + old + ".yset").c_str());
         }
         fRenaming = false;
-        closeSetup();
+    }
+    static bool sameName(const std::string& a, const std::string& b)
+    {
+        if (a.size() != b.size()) return false;
+        for (size_t i = 0; i < a.size(); ++i) if (std::tolower((unsigned char)a[i]) != std::tolower((unsigned char)b[i])) return false;
+        return true;
+    }
+    // a name every computer can save: no spaces or dots at the ends, and none of Windows' reserved names
+    static std::string safeFileName(const char* in)
+    {
+        std::string nm = in;
+        while (!nm.empty() && (nm.back() == ' ' || nm.back() == '.')) nm.pop_back();
+        size_t a = 0; while (a < nm.size() && (nm[a] == ' ' || nm[a] == '.')) ++a;
+        nm = nm.substr(a);
+        if (nm.empty()) return nm;
+        std::string up; for (char c : nm) up += (char)std::toupper((unsigned char)c);
+        const size_t dot = up.find('.');
+        const std::string stem = dot == std::string::npos ? up : up.substr(0, dot);
+        static const char* const reserved[] = { "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+                                                "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9" };
+        for (const char* r : reserved) if (stem == r) { nm += " set"; break; }
+        return nm;
     }
 
     // --------------------------------------------------------------------------------------------
@@ -4219,6 +4309,9 @@ protected:
     char fPresetName[64] = {};
     bool fPresetUser = false, fPresetDirty = false;
     std::vector<std::string> fUserSets, fPadPresetNames;
+    int fSetPage = 0, fPadPresetPage = 0;          // which page of a long preset list the menu shows
+    std::string fReplaceName;                       // waiting for "replace it?" on this name
+    bool fNameConfirmed = false;                    // the Windows save dialog already asked about replacing
     std::vector<Snap> fUndo, fRedo;
     bool fNaming = false, fNameFresh = false, fRenaming = false, fKnobGridBottom = false;
     uintptr_t fKbPrev = 0;
@@ -4252,7 +4345,7 @@ protected:
     bool fMenuOpen = false, fMenuFromDetail = false;
     int fMenuKind = 0, fMenuTarget = -1, fMenuSlot = -1, fMenuCount = 0, fMenuHover = -1, fMenuChecked = -1, fMenuChecked2 = -1, fMenuChecked3 = -1, fMenuChecked4 = -1, fMenuChecked5 = -1, fMenuCols = 1, fMenuCol = 0;
     float fMenuX = 0.f, fMenuY = 0.f, fMenuRX = 0.f, fMenuRY = 0.f, fMenuW = 200.f;
-    enum { kMaxMenuItems = 64 };
+    enum { kMaxMenuItems = 96 };
     MenuItem fMenuItems[kMaxMenuItems];
     char fMenuHeader[64] = {}, fMenuSub[64] = {}, fMenuFoot[64] = {};
 

@@ -4,6 +4,10 @@
 # Mac: make   (VST3, CLAP and AU; see BUILDING.md)
 FILES_DSP = YanceyPlugin.cpp YanceyPlatform.cpp YanceyDecode.cpp
 FILES_UI  = YanceyUI.cpp
+# Mac: drag-and-drop from Finder (Objective-C++)
+ifneq (,$(findstring apple,$(shell $(or $(CC),cc) -dumpmachine 2>/dev/null)))
+FILES_UI += YanceyDropMac.mm
+endif
 
 NAME = Dewitt
 DPF_BUILD_DIR = build
