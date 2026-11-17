@@ -17,7 +17,7 @@ Output lands in `plugin/bin/` and `airliner/bin/`. Linux needs the libgl and lib
 **Windows** (cross-compiling with MinGW-w64): add
 `WINDOWS=true CC=x86_64-w64-mingw32-gcc CXX=x86_64-w64-mingw32-g++ AR=x86_64-w64-mingw32-ar` to the `make` lines
 (and build `freetype/libfreetype-win.a`). Delete `dpf/build*` when switching between Windows and Linux builds.
-The Windows installer: `installer/make-installer.sh <folder with Dewitt.clap and Dewitt.vst3> <output dir>`
+The Windows installer: `installer/make-installer.sh <folder with Dewitt.clap and the Dewitt.vst3 bundle> <output dir> [label]` (needs NSIS 3: `apt install nsis`). It adds the manual, the How to Set Up MIDI pictures, `installer/README-Windows.txt` and the licenses.
 (needs NSIS).
 
 **Mac:** `tools/build-mac.sh` does everything for Dewitt and Airliner: DPF, FreeType, each plug-in for arm64 and

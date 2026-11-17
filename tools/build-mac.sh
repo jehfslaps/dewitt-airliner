@@ -201,6 +201,7 @@ The plug-ins go into the standard folders, for every user on this Mac:
 
 After installing, restart your music app (or rescan plug-ins) and look for $1 under slapworx.
 EOF
+  if [ "$1" = Dewitt ]; then echo "The user manual and the How to Set Up MIDI pictures come in the same download as this installer."; fi
   if [ "$SIGNED" = 0 ]; then cat <<'EOF'
 
 This test build is not signed with an Apple Developer ID yet, so macOS asks before opening it:
@@ -269,6 +270,9 @@ if [ "${AIRLINER_ALL:-0}" = 1 ]; then
   mkpkg AirlinerLooper "Airliner Looper" $AIRLINER_VERSION audio.slapworx.airlinerlooper
   mkpkg AirlinerVinyl  "Airliner Vinyl"  $AIRLINER_VERSION audio.slapworx.airlinervinyl
 fi
+# Dewitt's manual and the How to Set Up MIDI pictures go next to the installers
+cp docs/manual/Dewitt_User_Manual.pdf "dist/release/Dewitt-$DEWITT_VERSION$SUFFIX-User-Manual.pdf"
+(cd docs/midi-setup && zip -qry "$ROOT/dist/release/Dewitt-How-to-Set-Up-MIDI.zip" "How to Set Up MIDI")
 
 # ---------------------------------------------------------------------------------------------------------------
 # 6. notarize (only with a Developer ID and an Apple ID app password)
