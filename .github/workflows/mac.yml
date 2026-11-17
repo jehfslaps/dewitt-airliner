@@ -29,20 +29,15 @@ on:
         description: 'Also build Airliner Looper and Airliner Vinyl'
         type: boolean
         default: false
-      runner:
-        description: 'Which GitHub Mac to build on (Intel when the Apple Silicon queue is full; the files are the same)'
-        type: choice
-        options: [macos-15, macos-15-intel]
-        default: macos-15
 
 permissions:
   contents: write     # only used to make the draft release from a mac-v* tag
 
 jobs:
   mac:
-    # Apple Silicon by default; Run workflow can pick macos-15-intel (checks then run on Intel, and the
-    # universal files come out the same)
-    runs-on: ${{ inputs.runner || 'macos-15' }}
+    # Apple Silicon only: the AU's Info.plist is made by running the arm64 build, which an Intel Mac can't do.
+    # When GitHub's Apple Silicon queue is full the job gives up after 15 minutes without starting: rerun it.
+    runs-on: macos-15
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
