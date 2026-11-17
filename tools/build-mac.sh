@@ -55,7 +55,8 @@ for arch in arm64 x86_64; do
   for p in "${PRODUCTS[@]}"; do
     set -- $p; name=$1; dir=$2; shift 2
     log="dist/logs/build-$name-$arch.log"
-    make -C "$dir" -j"$JOBS" "$@" CFLAGS="$A" CXXFLAGS="$A" LDFLAGS="$A" > "$log" 2>&1 \
+    # TARGET_MACHINE: DPF picks CPU flags from it; without it an Intel runner adds -msse to the arm64 build
+    make -C "$dir" -j"$JOBS" "$@" TARGET_MACHINE="$arch-apple-darwin" CFLAGS="$A" CXXFLAGS="$A" LDFLAGS="$A" > "$log" 2>&1 \
       || { tail -40 "$log"; die "$name ($arch)"; }
     echo "built $name ($arch)"
   done
