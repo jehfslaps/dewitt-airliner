@@ -22,7 +22,7 @@ on:
     inputs:
       label:
         description: 'Text after the version in file names (empty for a final release)'
-        default: 'beta'
+        default: ''
         required: false
       airliner_all:
         description: 'Also build Airliner Looper and Airliner Vinyl'

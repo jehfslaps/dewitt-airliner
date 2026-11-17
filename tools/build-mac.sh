@@ -275,6 +275,14 @@ fi
 # ---------------------------------------------------------------------------------------------------------------
 # 6. notarize (only with a Developer ID and an Apple ID app password)
 NOTARIZED=0
+staple() {   # Apple's ticket can take a few minutes to show up after "Accepted": retry for up to ~10 minutes
+  local i
+  for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+    xcrun stapler staple "$1" > /dev/null 2>&1 && return 0
+    sleep 50
+  done
+  xcrun stapler staple "$1"
+}
 if [ -n "$MAC_SIGN_INSTALLER" ] && [ "$SIGNED" = 1 ] && [ -n "$APPLE_ID" ] && [ -n "$APPLE_TEAM_ID" ] && [ -n "$APPLE_APP_PASSWORD" ]; then
   step "Notarize"
   NOTARIZED=1
@@ -284,7 +292,7 @@ if [ -n "$MAC_SIGN_INSTALLER" ] && [ "$SIGNED" = 1 ] && [ -n "$APPLE_ID" ] && [ 
     xcrun notarytool submit "$f" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" \
           --wait --timeout 90m > "$log" 2>&1 || true
     if grep -q "status: Accepted" "$log"; then
-      xcrun stapler staple "$f" > /dev/null && echo "notarized and stapled: $f"
+      staple "$f" && echo "notarized and stapled: $f" || { echo "stapling $f failed"; NOTARIZED=0; FAILED=1; }
     else
       cat "$log"; NOTARIZED=0
       echo "NOT NOTARIZED YET: $f (if Apple is still working on it, run the build again later)"; FAILED=1
@@ -294,7 +302,7 @@ if [ -n "$MAC_SIGN_INSTALLER" ] && [ "$SIGNED" = 1 ] && [ -n "$APPLE_ID" ] && [ 
   if [ "$NOTARIZED" = 1 ]; then
     for p in "${PRODUCTS[@]}"; do
       set -- $p
-      for ext in vst3 component clap; do xcrun stapler staple "$2/bin/$1.$ext" > /dev/null || die "stapling $1.$ext"; done
+      for ext in vst3 component clap; do staple "$2/bin/$1.$ext" || die "stapling $1.$ext"; done
     done
   fi
 else
