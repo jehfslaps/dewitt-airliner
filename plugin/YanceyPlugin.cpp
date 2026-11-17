@@ -396,7 +396,8 @@ protected:
     const char* getMaker() const override { return "slapworx"; }
     const char* getHomePage() const override { return "https://slapworx.net/dewitt/"; }
     const char* getLicense() const override { return "Proprietary"; }
-    uint32_t getVersion() const override { return d_version(1, 2, 0); }
+    // 1.0 = the first public release (internal test builds were 1.2.x)
+    uint32_t getVersion() const override { return d_version(1, 0, 0); }
     int64_t getUniqueId() const override { return d_cconst('H', 'w', 'r', 'd'); }
 
     void initAudioPort(const bool input, const uint32_t index, AudioPort& port) override

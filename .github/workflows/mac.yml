@@ -4,17 +4,15 @@ name: Mac build
 # signed, AU-validated, with installers (tools/build-mac.sh does the work).
 #   - push to main, or by hand (Actions > Mac build > Run workflow): the files come back as the "Mac-release"
 #     download on the run's page
-#   - push a tag like mac-v1.2-beta1: the same, plus a DRAFT pre-release on the repo's Releases page, for you to
-#     look over and publish
+#   - Run workflow with label empty: the release build (Dewitt_v<version>_Mac.zip), also put in a DRAFT release
+#   - push a tag like mac-v1.0-test1: the same as a push, plus a DRAFT pre-release on the Releases page
 # Secrets are never given to pull requests from forks (this workflow doesn't run on pull requests at all).
 # Signing and notarizing switch on by themselves once these repository secrets exist (Settings > Secrets and
-# variables > Actions), all from an Apple Developer account:
-#   MAC_CERT_P12_BASE64     your "Developer ID Application" and "Developer ID Installer" certificates, exported
-#                           together from Keychain Access as one .p12, base64-encoded
+# variables > Actions), all from the Apple Developer account:
+#   MAC_CERT_P12_BASE64     one .p12 holding the "Developer ID Application" and "Developer ID Installer"
+#                           certificates and their key, base64-encoded (the identities are read from it)
 #   MAC_CERT_PASSWORD       the .p12's password
-#   MAC_SIGN_APP            e.g. "Developer ID Application: Your Name (TEAMID)"
-#   MAC_SIGN_INSTALLER      e.g. "Developer ID Installer: Your Name (TEAMID)"
-#   APPLE_ID, APPLE_TEAM_ID, APPLE_APP_PASSWORD   (an app-specific password from appleid.apple.com)
+#   APPLE_ID, APPLE_TEAM_ID, APPLE_APP_PASSWORD   (an app-specific password from account.apple.com)
 on:
   push:
     branches: [main]
@@ -53,18 +51,22 @@ jobs:
           security create-keychain -p "$KP" "$KC"
           security set-keychain-settings -lut 21600 "$KC"
           security unlock-keychain -p "$KP" "$KC"
-          security import "$RUNNER_TEMP/cert.p12" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$KC"
-          security set-key-partition-list -S apple-tool:,apple: -k "$KP" "$KC" > /dev/null
+          security import "$RUNNER_TEMP/cert.p12" -k "$KC" -P "$P12_PASSWORD" -T /usr/bin/codesign -T /usr/bin/productbuild
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KP" "$KC" > /dev/null
           security list-keychains -d user -s "$KC" $(security list-keychains -d user | tr -d '"')
           rm -f "$RUNNER_TEMP/cert.p12"
-          security find-identity -v -p codesigning "$KC"
+          security find-identity -v "$KC"
+          # the two identities' full names, e.g. "Developer ID Application: NAME (TEAMID)"
+          APP=$(security find-identity -v -p codesigning "$KC" | grep -o '"Developer ID Application: [^"]*"' | head -1 | tr -d '"')
+          INST=$(security find-identity -v "$KC" | grep -o '"Developer ID Installer: [^"]*"' | head -1 | tr -d '"')
+          [ -n "$APP" ] && [ -n "$INST" ] || { echo "the certificate file needs both Developer ID Application and Developer ID Installer"; exit 1; }
+          echo "MAC_SIGN_APP=$APP" >> "$GITHUB_ENV"
+          echo "MAC_SIGN_INSTALLER=$INST" >> "$GITHUB_ENV"
 
       - name: Build, check, sign and package
         env:
           LABEL: ${{ github.event_name == 'workflow_dispatch' && inputs.label || 'beta' }}
           AIRLINER_ALL: ${{ inputs.airliner_all && '1' || '0' }}
-          MAC_SIGN_APP: ${{ secrets.MAC_CERT_P12_BASE64 != '' && secrets.MAC_SIGN_APP || '' }}
-          MAC_SIGN_INSTALLER: ${{ secrets.MAC_CERT_P12_BASE64 != '' && secrets.MAC_SIGN_INSTALLER || '' }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
@@ -94,3 +96,12 @@ jobs:
           gh release create "$GITHUB_REF_NAME" dist/release/* --draft --prerelease \
             --title "Mac $GITHUB_REF_NAME" \
             --notes "Mac test build of Dewitt and Airliner: universal (Apple Silicon + Intel), VST3, AU and CLAP, macOS 10.15+. Checks and signing details are in the run's logs."
+
+      - name: Draft release with the Dewitt download (Run workflow only)
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # a DRAFT: only the repo owner can see it, so the public repo doesn't hand out the download
+          gh release create "dewitt-build-${{ github.run_number }}" dist/release/Dewitt_*_Mac.zip --draft \
+            --title "Dewitt Mac download (build ${{ github.run_number }})" --notes "Made by run ${{ github.run_id }}."

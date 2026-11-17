@@ -19,7 +19,7 @@
 set -e
 cd "$(dirname "$0")/.."
 ROOT="$PWD"
-DEWITT_VERSION=1.2
+DEWITT_VERSION=1.0
 AIRLINER_VERSION=1.0
 LABEL="${LABEL-beta}"
 SUFFIX="${LABEL:+-$LABEL}"
@@ -271,23 +271,59 @@ if [ "${AIRLINER_ALL:-0}" = 1 ]; then
   mkpkg AirlinerLooper "Airliner Looper" $AIRLINER_VERSION audio.slapworx.airlinerlooper
   mkpkg AirlinerVinyl  "Airliner Vinyl"  $AIRLINER_VERSION audio.slapworx.airlinervinyl
 fi
-# Dewitt's manual and the How to Set Up MIDI pictures go next to the installers
-cp docs/manual/Dewitt_User_Manual.pdf "dist/release/Dewitt-$DEWITT_VERSION$SUFFIX-User-Manual.pdf"
-(cd docs/midi-setup && zip -qry "$ROOT/dist/release/Dewitt-How-to-Set-Up-MIDI.zip" "How to Set Up MIDI")
 
 # ---------------------------------------------------------------------------------------------------------------
 # 6. notarize (only with a Developer ID and an Apple ID app password)
+NOTARIZED=0
 if [ -n "$MAC_SIGN_INSTALLER" ] && [ "$SIGNED" = 1 ] && [ -n "$APPLE_ID" ] && [ -n "$APPLE_TEAM_ID" ] && [ -n "$APPLE_APP_PASSWORD" ]; then
   step "Notarize"
+  NOTARIZED=1
   for f in dist/release/*.pkg; do
+    log="dist/logs/notarize-$(basename "$f").txt"
+    # a new Apple account's first submissions can take hours; the job allows 120 minutes
     xcrun notarytool submit "$f" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" \
-          --wait > "dist/logs/notarize-$(basename "$f").txt" 2>&1 \
-      || { cat "dist/logs/notarize-$(basename "$f").txt"; die "notarizing $f"; }
-    xcrun stapler staple "$f" > /dev/null && echo "notarized and stapled: $f"
+          --wait --timeout 90m > "$log" 2>&1 || true
+    if grep -q "status: Accepted" "$log"; then
+      xcrun stapler staple "$f" > /dev/null && echo "notarized and stapled: $f"
+    else
+      cat "$log"; NOTARIZED=0
+      echo "NOT NOTARIZED YET: $f (if Apple is still working on it, run the build again later)"; FAILED=1
+    fi
   done
+  # the plug-ins inside were notarized with the installer: staple the copies for manual install too
+  if [ "$NOTARIZED" = 1 ]; then
+    for p in "${PRODUCTS[@]}"; do
+      set -- $p
+      for ext in vst3 component clap; do xcrun stapler staple "$2/bin/$1.$ext" > /dev/null || die "stapling $1.$ext"; done
+    done
+  fi
 else
   echo; echo "(not notarized: needs MAC_SIGN_APP, MAC_SIGN_INSTALLER, APPLE_ID, APPLE_TEAM_ID, APPLE_APP_PASSWORD)"
 fi
+
+# ---------------------------------------------------------------------------------------------------------------
+# 7. the Dewitt download: Dewitt_v<version>_Mac.zip (the same layout as the Windows one)
+step "Dewitt download"
+DZ="Dewitt_v$DEWITT_VERSION${LABEL:+-$LABEL}_Mac"
+W="build-tests/$DZ"; rm -rf "$W"; mkdir -p "$W/manual install" "$W/licenses"
+cp "dist/release/Dewitt-$DEWITT_VERSION$SUFFIX-Mac.pkg" "$W/Install Dewitt.pkg"
+cp docs/manual/Dewitt_User_Manual.pdf "$W/"
+cp -R "docs/midi-setup/How to Set Up MIDI" "$W/"
+cp installer/README-Mac.txt "$W/README.txt"
+if [ "$NOTARIZED" = 0 ]; then cat >> "$W/README.txt" <<'EOF'
+
+TEST BUILD: not signed with an Apple Developer ID, so macOS asks before opening it.
+Control-click the installer, choose Open, then Open again (or System Settings >
+Privacy & Security > Open Anyway).
+EOF
+fi
+cp dpf/LICENSE "$W/licenses/DPF-ISC.txt"
+cp dpf/dgl/src/nanovg/LICENSE.txt "$W/licenses/NanoVG-zlib.txt"
+cp ft-src/docs/FTL.TXT "$W/licenses/FreeType-FTL.txt"
+for ext in component vst3 clap; do ditto "plugin/bin/Dewitt.$ext" "$W/manual install/Dewitt.$ext"; done
+rm -f "dist/release/$DZ.zip"
+ditto -c -k --keepParent "$W" "dist/release/$DZ.zip"
+echo "made dist/release/$DZ.zip ($([ "$NOTARIZED" = 1 ] && echo "signed + notarized" || echo "NOT notarized"))"
 
 # ---------------------------------------------------------------------------------------------------------------
 step "Done"

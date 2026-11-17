@@ -6,7 +6,7 @@
 set -e
 SRC="$(cd "$1" && pwd)"; mkdir -p "$2"; OUT="$(cd "$2" && pwd)"; LABEL="${3-beta}"
 HERE="$(cd "$(dirname "$0")" && pwd)"; ROOT="$HERE/.."
-VERSION=1.2; NUMVER=1.2.0.0
+VERSION=1.0; NUMVER=1.0.0.0
 [ -f "$SRC/Dewitt.clap" ] && [ -d "$SRC/Dewitt.vst3" ] || { echo "need Dewitt.clap and Dewitt.vst3 in $SRC"; exit 1; }
 STAGE="$(mktemp -d)"; trap 'rm -rf "$STAGE"' EXIT
 cp -R "$SRC/Dewitt.vst3" "$SRC/Dewitt.clap" "$STAGE/"

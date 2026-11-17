@@ -1,5 +1,5 @@
 ; Dewitt - Windows installer (NSIS 3, Modern UI 2). Built by make-installer.sh:
-; makensis -DVERSION=1.2 -DNUMVER=1.2.0.0 -DSTAGE=<folder> -DOUTFILE=<exe> dewitt.nsi
+; makensis -DVERSION=1.0 -DNUMVER=1.0.0.0 -DSTAGE=<folder> -DOUTFILE=<exe> dewitt.nsi
 ; STAGE holds the Dewitt.vst3 bundle folder, Dewitt.clap, Dewitt_User_Manual.pdf, README.txt, licenses/ and "How to Set Up MIDI"/
 Unicode true
 Target amd64-unicode   ; a 64-bit installer (Dewitt is 64-bit only)
@@ -7,10 +7,10 @@ ManifestDPIAware true
 SetCompressor /SOLID lzma
 
 !ifndef VERSION
-  !define VERSION "1.2"
+  !define VERSION "1.0"
 !endif
 !ifndef NUMVER
-  !define NUMVER "1.2.0.0"
+  !define NUMVER "1.0.0.0"
 !endif
 !define PRODUCT "Dewitt"
 !define UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\Dewitt"
@@ -98,7 +98,7 @@ Section "CLAP plug-in" SecClap
 SectionEnd
 
 Section "Remove the old JAY files" SecOld
-  ; Dewitt's working name before 1.2. Projects, settings and presets are kept.
+  ; Dewitt's working name during testing. Projects, settings and presets are kept.
   Delete "$COMMONFILES64\CLAP\JAY.clap"
   RMDir /r "$COMMONFILES64\VST3\JAY.vst3"
 SectionEnd

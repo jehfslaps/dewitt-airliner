@@ -5,7 +5,7 @@ import html, json, os, re
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.join(HERE, "..", "..")
-VERSION = "1.2"
+VERSION = "1.0"
 data = json.load(open(os.path.join(HERE, "effects.json")))
 ui = open(os.path.join(ROOT, "plugin", "YanceyUI.cpp"), encoding="utf-8").read()
 
@@ -59,15 +59,15 @@ page("01 · install", "01 / install", """
 <h2>Windows <span class="tag">Windows 10 / 11 · 64-bit · VST3 + CLAP</span></h2>
 <ol class="steps">
 <li>Close your DAW.</li>
-<li>Copy <b>Dewitt.vst3</b> into <code>C:\\Program Files\\Common Files\\VST3</code>.</li>
-<li>Using CLAP (Bitwig, Reaper, FL Studio)? Copy <b>Dewitt.clap</b> into <code>C:\\Program Files\\Common Files\\CLAP</code> as well.</li>
-<li>Updating? Replace the old Dewitt.vst3. Your projects, sets and controller setup stay as they were.</li>
-<li>Open your DAW and let it scan for new plug-ins. In FL Studio: <b>Options › Manage plugins › Find more plugins</b>.</li>
+<li>Double-click <b>Install Dewitt.exe</b>. If Windows shows a blue "Windows protected your PC" box, click <b>More info</b>, then <b>Run anyway</b>.</li>
+<li>Click <b>Next</b>, <b>Install</b>, <b>Finish</b>. VST3 and CLAP both go into the standard plug-in folders.</li>
+<li>Updating? Run the new installer over the old one. Your projects, sets and controller setup stay as they were.</li>
+<li>Open your DAW and let it scan for new plug-ins. In FL Studio: <b>Options › Manage plugins › Find installed plugins</b>.</li>
 </ol>
 <h2>Mac <span class="tag">macOS 10.15 or newer · Apple Silicon + Intel · AU + VST3 + CLAP</span></h2>
 <ol class="steps">
 <li>Close your DAW.</li>
-<li>Double-click <b>Dewitt-1.2-Mac.pkg</b> and click through the installer. Keep the formats you use ticked.</li>
+<li>Double-click <b>Install Dewitt.pkg</b> and click through the installer. Keep the formats you use ticked.</li>
 <li>Open your DAW. Logic and GarageBand check new Audio Units on their own the first time.</li>
 </ol>
 <h2>Find it in your DAW</h2>
@@ -75,9 +75,10 @@ page("01 · install", "01 / install", """
 <div class="note"><b>Logic Pro</b> loads Dewitt as an <b>AU MIDI-controlled effect</b> in a Software Instrument track's instrument slot, so your controller can reach it. Section 05 and the <b>How to Set Up MIDI</b> pictures show the steps for every DAW.</div>
 <h2>What's in the download</h2>
 <table>
-<tr><td>Dewitt.vst3 / .clap</td><td>The plug-in (Windows). On Mac, the installer.</td></tr>
+<tr><td>Install Dewitt</td><td>The installer (.exe on Windows, .pkg on Mac).</td></tr>
 <tr><td>Dewitt_User_Manual.pdf</td><td>This manual.</td></tr>
 <tr><td>How to Set Up MIDI</td><td>One picture per DAW: FL Studio, Ableton Live, Logic Pro, Studio One, Bitwig, Reaper, Cubase.</td></tr>
+<tr><td>manual install</td><td>The plug-in files on their own, for copying by hand.</td></tr>
 </table>
 """)
 
