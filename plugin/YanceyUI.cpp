@@ -244,6 +244,8 @@ struct Spring {
     Spring& general() { return tune(0.38f, 0.78f); }   // panels, menus, knobs, value changes
     Spring& press()   { return tune(0.10f, 1.f); }     // buttons, pads, hover
     Spring& fade()    { return tune(0.475f, 1.f); }    // fades and quiet transitions
+    Spring& quick()   { return tune(0.22f, 1.f); }     // menus, the pad card, bank and screen changes: dialed back
+                                                       // (Jeff, 2026-11-17: quicker, no overshoot, smaller moves)
     bool step(float dt) {
         if (gReduceMotion) { if (x == target && v == 0.f) return false; x = target; v = 0.f; return true; }
         if (std::fabs(x - target) < 0.0005f && std::fabs(v) < 0.0005f) {
@@ -312,16 +314,16 @@ public:
         fSpin.k = 6.f; fSpin.zeta = 1.f;
         fBounce.general();
         fDarkT.fade();
-        fPanelA.general();
+        fPanelA.quick();
         fToastA.fade();
         fUndoPress.tune(0.16f, 0.82f).snap(1.f);
         fRedoPress.tune(0.16f, 0.82f).snap(1.f);
-        fMenuA.general();
+        fMenuA.quick();
         fHovX.press(); fHovY.press(); fHovW.press(); fHovH.press(); fHovA.press();
-        fTabX.general().snap(pageTabX(0));
-        fPageSlide.general();
-        fCardA.general().snap(1.f);
-        fScrA.general().snap(1.f);
+        fTabX.quick().snap(pageTabX(0));
+        fPageSlide.quick();
+        fCardA.quick().snap(1.f);
+        fScrA.quick().snap(1.f);
         gReduceMotion = reduceMotion();
         std::snprintf(fPresetName, sizeof(fPresetName), "%s", "Default");
 
@@ -1158,8 +1160,8 @@ protected:
         save();
         if (std::fabs(slide) > 0.001f) {
             scissor(kTrayX, kTrayY, kTrayW, kTrayH);
-            translate(slide * 70.f, 0.f);
-            globalAlpha(clamp01(1.f - 0.9f * std::fabs(slide)));
+            translate(slide * 36.f, 0.f);
+            globalAlpha(clamp01(1.f - 0.8f * std::fabs(slide)));
         }
         for (int pass = 0; pass < 2; ++pass)
             for (int q = 0; q < kPadsPerPage; ++q) {
@@ -1534,8 +1536,8 @@ protected:
         const char* name = kind == 4 ? "EMPTY" : (kind == 3 ? "BEAT" : (kind == 2 ? "SAMPLE" : (kind == 1 ? kMoveNames[m] : kEffects[e].name)));
 
         save();
-        translate(kDetX, kDetY + 8.f * (1.f - fCardA.x));
-        if (fCardA.x < 0.999f) globalAlpha(0.35f + 0.65f * clamp01(fCardA.x));
+        translate(kDetX, kDetY + 4.f * (1.f - fCardA.x));
+        if (fCardA.x < 0.999f) globalAlpha(0.6f + 0.4f * clamp01(fCardA.x));
         beginPath(); roundedRect(0.f, 5.f, kDetW, kDetH, 20.f); fillColor(withAlpha(fT.shadow, fT.shadowA)); fill();
         beginPath(); roundedRect(1.5f, 1.5f, kDetW - 3.f, kDetH - 3.f, 18.5f); fillColor(bg); fill();
         strokeColor(fT.outline); strokeWidth(3.f); stroke();
@@ -2065,7 +2067,7 @@ protected:
         fillColor(withAlpha(fT.shadow, 0.3f * a)); fill();
         save();
         globalAlpha(a);
-        translate(kPanX, kPanY + 14.f * (1.f - a));
+        translate(kPanX, kPanY + 6.f * (1.f - a));
         const float w = kPanW, h = kPanH, cx = w * 0.5f;
         beginPath(); roundedRect(0.f, 7.f, w, h, 24.f);
         fillColor(withAlpha(fT.shadow, fT.shadowA + 0.15f)); fill();
@@ -2088,7 +2090,7 @@ protected:
 
         const float sa = clamp01(fScrA.x);
         save();
-        if (sa < 0.999f) { scissor(0.f, 56.f, w, h - 56.f); translate(16.f * (1.f - fScrA.x), 0.f); globalAlpha(a * (0.15f + 0.85f * sa)); }
+        if (sa < 0.999f) { scissor(0.f, 56.f, w, h - 56.f); translate(8.f * (1.f - fScrA.x), 0.f); globalAlpha(a * (0.4f + 0.6f * sa)); }
         switch (fScr) {
         case kScrHome: {
             const int st = ctrlStatus();
@@ -2364,8 +2366,8 @@ protected:
         save();
         {   // grow from the corner nearest to where it was opened
             const float ax = fMenuX <= x + 1.f ? x : x + w, ay = fMenuY <= y + 1.f ? y : y + h;
-            const float sc = 0.94f + 0.06f * fMenuA.x;
-            translate(ax, ay - 6.f * (1.f - fMenuA.x)); scale(sc, sc); translate(-ax, -ay);
+            const float sc = 0.97f + 0.03f * fMenuA.x;
+            translate(ax, ay - 3.f * (1.f - fMenuA.x)); scale(sc, sc); translate(-ax, -ay);
             globalAlpha(ma);
         }
         beginPath(); roundedRect(x, y + 4.f, w, h, 12.f);
