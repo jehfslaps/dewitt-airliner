@@ -135,6 +135,10 @@ static inline int sideOfParam(int p)
     if (p == pVinyl || p == pComp || p == pNoise || p == pFlu || p == pInB || p == pOutB) return 1;
     return -1;
 }
+// SET UP CONTROLLER (Airliner only: the single plug-ins have no room in the header)
+static constexpr float kSetupY = 18.f, kSetupH = 32.f, kSetupR = kPresetX - 26.f;
+// the setup card, over the panels
+static constexpr float kWizW = 600.f, kWizH = 392.f, kWizX = (kW - kWizW) * 0.5f, kWizY = 128.f;
 // the three controls in each panel's bar (-1: the LOOP button)
 static const int kSlotParam[2][3] = { { pLen, pSpeed, -1 }, { pComp, pNoise, pFlu } };
 static const int kFadParam[2][2] = { { pInA, pOutA }, { pInB, pOutB } };
@@ -143,7 +147,7 @@ static const char* const kTitle = "Airliner";
 static const char* const kTag = kKind == kKindLooper ? "LOOPER" : (kKind == kKindVinyl ? "VINYL" : nullptr);
 static const char* const kSideName[2] = { "DJ LOOPER", "VINYL SIM" };
 static const char* const kSideSub[2] = { "GRAB A SLICE, BEND THE TAPE", "THE OLD-RECORD SOUND" };
-static const char* const kFootHint = kKind == kKindBoth ? "Drag a knob or fader, double-click to reset. Right-click any control to link your MIDI controller."
+static const char* const kFootHint = kKind == kKindBoth ? "Drag a knob or fader, double-click to reset. SET UP CONTROLLER (top) links your MIDI controller."
                                                         : "Right-click any control to link your MIDI controller.";
 static const char* const kPresetFolder = kKind == kKindLooper ? "Looper Presets" : (kKind == kKindVinyl ? "Vinyl Presets" : "Presets");
 
@@ -191,6 +195,7 @@ public:
         fUndoPress.snap(1.f); fRedoPress.snap(1.f);
         fBadge.tune(0.38f, 0.5f);
         fMenuA.tune(0.25f, 1.f);
+        fWizA.tune(0.3f, 1.f); fWizStepA.tune(0.38f, 1.f); fSetupPress.tune(0.10f, 1.f); fWizPress.tune(0.10f, 1.f);
         std::snprintf(fPresetName, sizeof(fPresetName), "%s", "Default");
         fMsg[0][0] = fMsg[1][0] = '\0';
 
@@ -308,6 +313,8 @@ protected:
         moving |= fLimitT.step(dt); moving |= fModeT.step(dt); moving |= fOrderT.step(dt);
         moving |= fAllPress.step(dt); moving |= fUndoPress.step(dt); moving |= fRedoPress.step(dt);
         moving |= fBadge.step(dt); moving |= fMenuA.step(dt);
+        moving |= fWizA.step(dt); moving |= fWizStepA.step(dt); moving |= fSetupPress.step(dt); moving |= fWizPress.step(dt);
+        if (fWizLinkedAt > 0.0) { moving = true; if (t - fWizLinkedAt > 0.75) { fWizLinkedAt = 0.0; wizGo(fWiz + 1); } }
         if (fDarkT.step(dt)) { fT = lerpTheme(fTL, fTD, fDarkT.x); moving = true; }
 
         controllerIdle();
@@ -585,6 +592,7 @@ protected:
         drawText(fFontMed, 10.5f, fT.muted, kKind == kKindBoth ? 28.f : 58.f, kH - 18.f, NanoVG::ALIGN_LEFT | NanoVG::ALIGN_MIDDLE, kFootHint);
         if (kKind != kKindBoth) drawMoon(moonCX(), moonCY());
         if (fMenuOpen || fMenuA.x > 0.01f) drawMenu();
+        if (fWiz >= 0 || fWizA.x > 0.01f) drawWizard();
         restore();
     }
 
@@ -600,6 +608,7 @@ protected:
         }
         drawBadge(badgeCX(), kTitleCY - 4.f);
         if (kKind == kKindBoth) drawMoon(moonCX(), kTitleCY - 4.f);
+        if (kKind == kKindBoth) drawSetupButton();
 
         // preset: < name >  (click the name for the list)
         {
@@ -1043,6 +1052,7 @@ protected:
                 setState("learn", "-1");
                 saveController();
                 showMsg(("LINKED " + codeName(code)).c_str(), learnSide(slot));
+                if (fWiz > 0 && wizSlot(fWiz) == slot) { fWizCode = code; fWizLinkedAt = now(); }
             }
         }
         if (fP[oCtlSeq] != fLastCtlSeq) {
@@ -1104,6 +1114,287 @@ protected:
                 strokeColor(withAlpha(kAmberAcc, a)); strokeWidth(4.f); stroke();
             }
         }
+    }
+
+    // --------------------------------------------------------------------------------------------
+    // SET UP CONTROLLER: a guided setup, like Dewitt's. Steps: 0 how many knobs, 1 the LOOP pad, 2 the ON pad,
+    // 3.. each knob, then a summary. Each link step waits for the controller (the same learning as right-click),
+    // shows what it got for a moment and moves on. SKIP leaves a link as it is; BACK goes a step back.
+
+    enum { kWzClose = 1, kWzThree, kWzSix, kWzMyself, kWzSkip, kWzBack, kWzDone };
+    int fWiz = -1, fWizShown = 0, fWizKnobs = 3, fWizHover = -1, fWizDown = -1, fWizCode = -1;
+    double fWizLinkedAt = 0.0;
+    Spring fWizA, fWizStepA, fSetupPress, fWizPress;
+    bool fSetupHover = false, fSetupDown = false;
+
+    float setupX() { return std::max(moonCX() + 12.f + 22.f, kSetupR - 168.f); }
+    bool onSetupButton(float x, float y) { return inRect(x, y, setupX(), kSetupY, kSetupR - setupX(), kSetupH); }
+    bool anyLinked() const { for (int i = 0; i < kNumLearn; ++i) if (fMap[i] >= 0) return true; return false; }
+    void drawSetupButton()
+    {
+        const float x0 = setupX(), w = kSetupR - x0;
+        const float ps = 1.f - 0.05f * fSetupPress.x;
+        save();
+        translate(x0 + w * 0.5f, kSetupY + kSetupH * 0.5f); scale(ps, ps);
+        const Color fill_ = fSetupHover ? fT.text : fT.pillFill, ink = fSetupHover ? fT.bg : fT.text;
+        pill(-w * 0.5f, -kSetupH * 0.5f, w, kSetupH, fill_, fT.outline, 3.f);
+        const bool dot = !anyLinked();      // nothing linked yet: an amber dot says "start here"
+        const float tx = dot ? 7.f : 0.f;
+        if (dot) { beginPath(); circle(-w * 0.5f + 16.f, 0.f, 4.5f); fillColor(kAmberAcc); fill(); strokeColor(fT.outline); strokeWidth(1.5f); stroke(); }
+        drawText(fFontHeavy, 11.f, ink, tx, 0.f, NanoVG::ALIGN_CENTER | NanoVG::ALIGN_MIDDLE, "SET UP CONTROLLER", 0.3f);
+        restore();
+        caption(x0 + w * 0.5f, "MIDI", fT.muted);
+    }
+
+    int wizLast() const { return 3 + fWizKnobs; }
+    int wizSlot(int step) const
+    {
+        if (step == 1) return kLearnLoop;
+        if (step == 2) return kLearnVinyl;
+        if (step >= 3 && step < wizLast()) return kLearnKnob0 + (step - 3);
+        return -1;
+    }
+    void openWizard()
+    {
+        if (fMenuOpen) closeMenu();
+        cancelLearn();
+        fWizKnobs = fOneEach ? 6 : 3;
+        fWizHover = fWizDown = -1;
+        fSetupHover = false;
+        fWizA.set(1.f);
+        wizGo(0);
+    }
+    void closeWizard()
+    {
+        cancelLearn();
+        fWizLinkedAt = 0.0;
+        fWiz = -1;
+        fWizA.set(0.f);
+        wake();
+    }
+    void wizGo(int step)
+    {
+        if (step < 0) step = 0;
+        if (step > wizLast()) step = wizLast();
+        fWiz = fWizShown = step;
+        fWizLinkedAt = 0.0; fWizCode = -1;
+        fWizStepA.snap(0.f); fWizStepA.set(1.f);
+        const int slot = wizSlot(step);
+        if (slot >= 0) startLearn(slot); else cancelLearn();
+        wake();
+    }
+    void wizClick(int h)
+    {
+        if (h == kWzClose || h == kWzMyself || h == kWzDone) { closeWizard(); return; }
+        if (h == kWzThree || h == kWzSix) {
+            fWizKnobs = h == kWzSix ? 6 : 3;
+            if (fOneEach != (h == kWzSix)) { fOneEach = h == kWzSix; saveController(); }
+            wizGo(1);
+            return;
+        }
+        if (h == kWzSkip && fWizLinkedAt == 0.0) { wizGo(fWiz + 1); return; }
+        if (h == kWzBack && fWizLinkedAt == 0.0) { wizGo(fWiz - 1); return; }
+    }
+
+    // the card's parts (design units)
+    static constexpr float kWzChoiceW = 250.f, kWzChoiceH = 150.f, kWzChoiceY = kWizY + 132.f;
+    static float choiceX(int i) { return kW * 0.5f + (i == 0 ? -kWzChoiceW - 12.f : 12.f); }
+    static constexpr float kWzBtnW = 96.f, kWzBtnH = 32.f, kWzBtnY = kWizY + kWizH - 52.f;
+    static float wzBtnX(int i) { return kWizX + kWizW - 28.f - kWzBtnW - (float)i * (kWzBtnW + 10.f); }   // 0: rightmost
+    int wizHit(float x, float y) const
+    {
+        if (fWiz < 0) return -1;
+        if (inCircle(x, y, kWizX + kWizW - 30.f, kWizY + 30.f, 16.f)) return kWzClose;
+        if (fWiz == 0) {
+            for (int i = 0; i < 2; ++i) if (inRect(x, y, choiceX(i), kWzChoiceY, kWzChoiceW, kWzChoiceH)) return i == 0 ? kWzThree : kWzSix;
+            if (inRect(x, y, kW * 0.5f - 170.f, kWizY + kWizH - 46.f, 340.f, 26.f)) return kWzMyself;
+            return -1;
+        }
+        if (fWiz == wizLast()) return inRect(x, y, wzBtnX(0), kWzBtnY, kWzBtnW, kWzBtnH) ? kWzDone : -1;
+        if (inRect(x, y, wzBtnX(0), kWzBtnY, kWzBtnW, kWzBtnH)) return kWzSkip;
+        if (inRect(x, y, wzBtnX(1), kWzBtnY, kWzBtnW, kWzBtnH)) return kWzBack;
+        return -1;
+    }
+
+    // what a knob runs, in words
+    std::string knobJob(int j) const
+    {
+        if (fWizKnobs == 6) { const int p = kEachTarget[j]; return p == pOutB ? std::string("Runs the Vinyl Sim's OUTPUT.") : std::string("Runs ") + kSpecs[p].screen + "."; }
+        if (j == 0) return std::string("Runs ") + kSpecs[pLen].screen + " on the DJ Looper and " + kSpecs[pComp].screen + " on the Vinyl Sim.";
+        if (j == 1) return std::string("Runs ") + kSpecs[pSpeed].screen + " on the DJ Looper and " + kSpecs[pNoise].screen + " on the Vinyl Sim.";
+        return std::string("Runs ") + kSpecs[pFlu].screen + " on the Vinyl Sim.";
+    }
+    void textCenter(FontId f, float em, const Color& c, float cx, float y, const char* str, float maxW, float lineH, float spacing = 0.f)
+    {
+        std::string line, word; std::vector<std::string> lines;
+        for (const char* p = str; ; ++p) {
+            if (*p == ' ' || *p == '\0') {
+                const std::string tryL = line.empty() ? word : line + " " + word;
+                if (!line.empty() && measure(f, em, tryL.c_str(), spacing) > maxW) { lines.push_back(line); line = word; }
+                else line = tryL;
+                word.clear();
+                if (*p == '\0') break;
+            } else word += *p;
+        }
+        if (!line.empty()) lines.push_back(line);
+        for (size_t i = 0; i < lines.size(); ++i)
+            drawText(f, em, c, cx, y + lineH * (float)i, NanoVG::ALIGN_CENTER | NanoVG::ALIGN_MIDDLE, lines[i].c_str(), spacing);
+    }
+    void wizButton(int id, float x, const char* label, bool primary)
+    {
+        const bool hov = fWizHover == id;
+        const float ps = (fWizDown == id) ? 1.f - 0.05f * fWizPress.x : 1.f;
+        save();
+        translate(x + kWzBtnW * 0.5f, kWzBtnY + kWzBtnH * 0.5f); scale(ps, ps);
+        const Color f = primary ? (hov ? fT.text : kAmberAcc) : (hov ? fT.text : fT.pillFill);
+        const Color ink = primary ? (hov ? fT.bg : hex(0x0A1A33)) : (hov ? fT.bg : fT.text);
+        pill(-kWzBtnW * 0.5f, -kWzBtnH * 0.5f, kWzBtnW, kWzBtnH, f, fT.outline, 3.f);
+        drawText(fFontHeavy, 12.f, ink, 0.f, 0.f, NanoVG::ALIGN_CENTER | NanoVG::ALIGN_MIDDLE, label, 0.3f);
+        restore();
+    }
+
+    void drawWizard()
+    {
+        const float a = clamp01(fWizA.x);
+        const int step = fWizShown;
+        globalAlpha(a);
+        beginPath(); rect(0, 0, kW, std::max(kH, (float)getHeight() / ((float)getWidth() / kW)));
+        fillColor(withAlpha(fT.shadow, fDark ? 0.55f : 0.35f)); fill();
+        save();
+        const float lift = 10.f * (1.f - a);
+        translate(0.f, lift);
+        beginPath(); roundedRect(kWizX, kWizY + 6.f, kWizW, kWizH, 18.f); fillColor(withAlpha(fT.shadow, fT.shadowA)); fill();
+        beginPath(); roundedRect(kWizX, kWizY, kWizW, kWizH, 18.f); fillColor(fT.menuBg); fill();
+        strokeColor(fDark ? fT.outline : fT.text); strokeWidth(3.f); stroke();
+        const Color ink = fT.menuText, soft = withAlpha(fT.menuText, 0.62f);
+        // title row
+        drawText(fFontHeavy, 12.f, ink, kWizX + 28.f, kWizY + 30.f, NanoVG::ALIGN_LEFT | NanoVG::ALIGN_MIDDLE, "SET UP YOUR CONTROLLER", 1.2f);
+        {
+            const float cx = kWizX + kWizW - 30.f, cy = kWizY + 30.f;
+            const bool hov = fWizHover == kWzClose;
+            beginPath(); circle(cx, cy, 14.f); fillColor(hov ? fT.text : fT.pillFill); fill(); strokeColor(fT.outline); strokeWidth(2.5f); stroke();
+            const Color xc = hov ? fT.bg : fT.text;
+            beginPath(); moveTo(cx - 4.5f, cy - 4.5f); lineTo(cx + 4.5f, cy + 4.5f); moveTo(cx + 4.5f, cy - 4.5f); lineTo(cx - 4.5f, cy + 4.5f);
+            lineCap(NanoVG::ROUND); strokeColor(xc); strokeWidth(2.2f); stroke();
+        }
+        // the steps along the top: PADS, KNOBS, DONE
+        if (step > 0) {
+            static const char* const names[3] = { "PADS", "KNOBS", "DONE" };
+            const int at = step <= 2 ? 0 : (step < wizLast() ? 1 : 2);
+            const float y = kWizY + 64.f, x0 = kW * 0.5f - 120.f;
+            beginPath(); moveTo(x0, y); lineTo(x0 + 240.f, y); strokeColor(withAlpha(ink, 0.2f)); strokeWidth(2.f); stroke();
+            for (int i = 0; i < 3; ++i) {
+                const float cx = x0 + 120.f * (float)i;
+                const bool done = i < at, now_ = i == at;
+                beginPath(); circle(cx, y, 11.f); fillColor(done || now_ ? kAmberAcc : fT.menuBg); fill();
+                strokeColor(done || now_ ? fT.outline : withAlpha(ink, 0.3f)); strokeWidth(2.f); stroke();
+                char n[8]; std::snprintf(n, sizeof(n), "%d", i + 1);
+                drawText(fFontHeavy, 10.f, done || now_ ? hex(0x0A1A33) : soft, cx, y, NanoVG::ALIGN_CENTER | NanoVG::ALIGN_MIDDLE, n);
+                drawText(fFontHeavy, 9.f, now_ ? ink : soft, cx, y + 21.f, NanoVG::ALIGN_CENTER | NanoVG::ALIGN_MIDDLE, names[i], 0.8f);
+            }
+        }
+        // this step's content fades and lifts in
+        const float sa = clamp01(fWizStepA.x);
+        globalAlpha(a * sa);
+        save();
+        translate(0.f, 8.f * (1.f - sa));
+        const float cx = kW * 0.5f;
+        if (step == 0) {
+            drawText(fFontHeavy, 21.f, ink, cx, kWizY + 78.f, NanoVG::ALIGN_CENTER | NanoVG::ALIGN_MIDDLE, "How many knobs does your controller have?");
+            drawText(fFontMed, 12.5f, soft, cx, kWizY + 106.f, NanoVG::ALIGN_CENTER | NanoVG::ALIGN_MIDDLE, "Then you'll link two pads and your knobs. It takes about a minute.");
+            for (int i = 0; i < 2; ++i) {
+                const int id = i == 0 ? kWzThree : kWzSix;
+                const bool hov = fWizHover == id, cur = (fWizKnobs == 6) == (i == 1);
+                const float x = choiceX(i), y = kWzChoiceY;
+                const float ps = (fWizDown == id) ? 1.f - 0.03f * fWizPress.x : 1.f;
+                save();
+                translate(x + kWzChoiceW * 0.5f, y + kWzChoiceH * 0.5f); scale(ps, ps); translate(-kWzChoiceW * 0.5f, -kWzChoiceH * 0.5f);
+                beginPath(); roundedRect(0.f, 0.f, kWzChoiceW, kWzChoiceH, 16.f);
+                fillColor(hov ? fT.text : fT.tray); fill();
+                strokeColor(hov || cur ? fT.outline : withAlpha(fT.outline, 0.35f)); strokeWidth(hov || cur ? 3.f : 2.f); stroke();
+                const Color ci = hov ? fT.bg : ink, cs = hov ? withAlpha(fT.bg, 0.75f) : soft;
+                drawText(fFontTitle, 40.f, hov ? kAmberAcc : ci, kWzChoiceW * 0.5f, 44.f, NanoVG::ALIGN_CENTER | NanoVG::ALIGN_MIDDLE, i == 0 ? "3" : "6+", 0.f);
+                drawText(fFontHeavy, 12.f, ci, kWzChoiceW * 0.5f, 84.f, NanoVG::ALIGN_CENTER | NanoVG::ALIGN_MIDDLE, i == 0 ? "3 KNOBS" : "6 OR MORE KNOBS", 0.8f);
+                textCenter(fFontMed, 11.5f, cs, kWzChoiceW * 0.5f, 108.f,
+                           i == 0 ? "They follow the side you press: LOOP or ON." : "One knob for each control, always.", kWzChoiceW - 36.f, 15.f);
+                restore();
+            }
+            const bool hov = fWizHover == kWzMyself;
+            drawText(fFontBold, 11.5f, hov ? ink : soft, cx, kWizY + kWizH - 33.f, NanoVG::ALIGN_CENTER | NanoVG::ALIGN_MIDDLE, "I'll link them myself (right-click any control)");
+            if (hov) { const float w = measure(fFontBold, 11.5f, "I'll link them myself (right-click any control)", 0.f);
+                       beginPath(); moveTo(cx - w * 0.5f, kWizY + kWizH - 24.f); lineTo(cx + w * 0.5f, kWizY + kWizH - 24.f); strokeColor(ink); strokeWidth(1.2f); stroke(); }
+        } else if (step < wizLast()) {
+            const int slot = wizSlot(step);
+            const bool knob = slot >= kLearnKnob0;
+            const bool linked = fWizLinkedAt > 0.0;
+            // the thing to touch: a pad or a knob, breathing while it waits
+            const float iy = kWizY + 146.f;
+            const float br = linked ? 1.f : 0.5f + 0.5f * std::sin((float)now() * 5.f);
+            if (knob) {
+                beginPath(); circle(cx, iy, 34.f + 8.f * br); strokeColor(withAlpha(kAmberAcc, 0.25f + 0.5f * br)); strokeWidth(4.f); stroke();
+                beginPath(); circle(cx, iy, 28.f); fillColor(fT.face); fill(); strokeColor(fT.outline); strokeWidth(3.f); stroke();
+                const float ang = linked ? 0.6f : -0.9f + 0.5f * std::sin((float)now() * 2.f);
+                beginPath(); moveTo(cx, iy); lineTo(cx + std::sin(ang) * 20.f, iy - std::cos(ang) * 20.f);
+                lineCap(NanoVG::ROUND); strokeColor(fT.faceInk); strokeWidth(4.f); stroke();
+            } else {
+                beginPath(); roundedRect(cx - 34.f - 6.f * br, iy - 34.f - 6.f * br, 68.f + 12.f * br, 68.f + 12.f * br, 18.f);
+                strokeColor(withAlpha(kAmberAcc, 0.25f + 0.5f * br)); strokeWidth(4.f); stroke();
+                beginPath(); roundedRect(cx - 28.f, iy - 28.f, 56.f, 56.f, 12.f);
+                fillColor(linked ? kAmberAcc : (step == 1 ? kRedAcc : fT.face)); fill(); strokeColor(fT.outline); strokeWidth(3.f); stroke();
+                drawText(fFontHeavy, 12.f, step == 1 || linked ? hex(0x0A1A33) : fT.faceInk, cx, iy, NanoVG::ALIGN_CENTER | NanoVG::ALIGN_MIDDLE, step == 1 ? "LOOP" : "ON", 0.3f);
+            }
+            char title[64];
+            if (step == 1) std::snprintf(title, sizeof(title), "Hit the pad you want for LOOP");
+            else if (step == 2) std::snprintf(title, sizeof(title), "Hit the pad you want for ON");
+            else std::snprintf(title, sizeof(title), "Turn knob %d", step - 2);
+            drawText(fFontHeavy, 21.f, ink, cx, kWizY + 212.f, NanoVG::ALIGN_CENTER | NanoVG::ALIGN_MIDDLE, title);
+            const std::string job = step == 1 ? "This pad grabs a loop of the beat. HOLD or LATCH (under LOOP) sets how it plays."
+                                  : step == 2 ? "This pad turns the Vinyl Sim on and off."
+                                  : knobJob(step - 3);
+            textCenter(fFontMed, 12.5f, soft, cx, kWizY + 238.f, job.c_str(), kWizW - 120.f, 17.f);
+            // status: listening, or what it just got
+            if (linked) {
+                const std::string got = "LINKED \xC2\xB7 " + codeName(fWizCode);
+                drawText(fFontHeavy, 12.f, fDark ? kAmberAcc : fT.text, cx, kWizY + 280.f, NanoVG::ALIGN_CENTER | NanoVG::ALIGN_MIDDLE, got.c_str(), 0.8f);
+            } else {
+                const float w = measure(fFontHeavy, 11.f, "LISTENING FOR YOUR CONTROLLER", 0.8f);
+                beginPath(); circle(cx - w * 0.5f - 12.f, kWizY + 280.f, 4.f); fillColor(withAlpha(kAmberAcc, 0.4f + 0.6f * br)); fill();
+                drawText(fFontHeavy, 11.f, soft, cx, kWizY + 280.f, NanoVG::ALIGN_CENTER | NanoVG::ALIGN_MIDDLE, "LISTENING FOR YOUR CONTROLLER", 0.8f);
+            }
+            drawWrapped("Nothing happening? Turn your controller on in your DAW's MIDI settings and send it to the track Airliner is on. FL Studio: give the controller a port number and set Airliner's MIDI input port to match.",
+                        kWizX + 28.f, kWzBtnY + 2.f, kWizW - 2.f * (kWzBtnW + 10.f) - 56.f, 10.5f, 13.5f, withAlpha(fT.menuText, 0.5f));
+            wizButton(kWzSkip, wzBtnX(0), "SKIP", false);
+            wizButton(kWzBack, wzBtnX(1), "BACK", false);
+        } else {
+            const float ty = fWizKnobs == 6 ? kWizY + 116.f : kWizY + 128.f;
+            drawText(fFontHeavy, 21.f, ink, cx, ty, NanoVG::ALIGN_CENTER | NanoVG::ALIGN_MIDDLE, "You're all set");
+            const char* how = fWizKnobs == 6 ? "Each knob runs its own control."
+                                             : "Hit LOOP and your knobs run the DJ Looper. Hit ON and they jump to the Vinyl Sim.";
+            textCenter(fFontMed, 12.5f, soft, cx, ty + 26.f, how, kWizW - 80.f, 17.f);
+            const int rows = 2 + fWizKnobs;
+            const float rowH = fWizKnobs == 6 ? 19.f : 24.f, x0 = kW * 0.5f - 170.f, x1 = kW * 0.5f + 170.f;
+            float y = kWizY + (fWizKnobs == 6 ? 172.f : 204.f);
+            for (int r = 0; r < rows; ++r, y += rowH) {
+                const int slot = r < 2 ? r : kLearnKnob0 + (r - 2);
+                std::string nm = slotName(slot);
+                if (slot >= kLearnKnob0) {
+                    const int j = slot - kLearnKnob0;
+                    if (fWizKnobs == 6) nm += std::string("  \xC2\xB7  ") + (kEachTarget[j] == pOutB ? "VINYL OUTPUT" : kSpecs[kEachTarget[j]].screen);
+                    else nm += j == 0 ? "  \xC2\xB7  LENGTH / COMP" : (j == 1 ? "  \xC2\xB7  SPEED / NOISE" : "  \xC2\xB7  WOW FLUT");
+                }
+                drawText(fFontBold, 12.f, ink, x0, y, NanoVG::ALIGN_LEFT | NanoVG::ALIGN_MIDDLE, nm.c_str());
+                const bool has = fMap[slot] >= 0;
+                drawText(fFontHeavy, 11.f, has ? ink : withAlpha(fT.menuText, 0.4f), x1, y, NanoVG::ALIGN_RIGHT | NanoVG::ALIGN_MIDDLE,
+                         has ? codeName(fMap[slot]).c_str() : "NOT LINKED", 0.5f);
+                if (r + 1 < rows) { beginPath(); moveTo(x0, y + rowH * 0.5f); lineTo(x1, y + rowH * 0.5f); strokeColor(withAlpha(ink, 0.12f)); strokeWidth(1.f); stroke(); }
+            }
+            drawWrapped("Change it any time: SET UP CONTROLLER at the top, or right-click any control.",
+                        kWizX + 28.f, kWzBtnY + kWzBtnH * 0.5f, kWizW - kWzBtnW - 76.f, 11.f, 14.f, withAlpha(fT.menuText, 0.55f));
+            wizButton(kWzDone, wzBtnX(0), "DONE", true);
+        }
+        restore();
+        restore();
+        globalAlpha(1.f);
     }
 
     // right-click: link this control, and the controller settings
@@ -1318,6 +1609,13 @@ protected:
     bool onMouse(const MouseEvent& ev) override
     {
         float x, y; toDesign(ev.pos.getX(), ev.pos.getY(), x, y);
+        if (fWiz >= 0) {
+            if (ev.button == kMouseButtonLeft) {
+                if (ev.press) { fWizDown = wizHit(x, y); if (fWizDown >= 0) { fWizPress.set(1.f); wake(); } }
+                else { const int h = wizHit(x, y); fWizPress.set(0.f); if (h >= 0 && h == fWizDown) wizClick(h); fWizDown = -1; wake(); }
+            }
+            return true;        // the setup card keeps the clicks while it's open
+        }
         if (ev.button == kMouseButtonRight && ev.press) {
             if (fMenuOpen) { closeMenu(); return true; }
             cancelLearn();
@@ -1338,6 +1636,7 @@ protected:
                 setParam(pLoop, 0.f);
             }
             fLoopPress.set(0.f); fVinPress.set(0.f); fAllPress.set(0.f); fUndoPress.set(1.f); fRedoPress.set(1.f);
+            if (fSetupDown) { fSetupDown = false; fSetupPress.set(0.f); if (kKind == kKindBoth && onSetupButton(x, y)) openWizard(); }
             return true;
         }
 
@@ -1391,6 +1690,7 @@ protected:
         }
 
         // header
+        if (kKind == kKindBoth && onSetupButton(x, y)) { fSetupDown = true; fSetupPress.set(1.f); wake(); return true; }
         if (inRect(x, y, kPresetX, kPresetY, kPresetW, kPresetH)) {
             if (x < kPresetX + 32.f) stepPreset(-1);
             else if (x > kPresetX + kPresetW - 32.f) stepPreset(1);
@@ -1463,6 +1763,8 @@ protected:
     bool onMotion(const MotionEvent& ev) override
     {
         float x, y; toDesign(ev.pos.getX(), ev.pos.getY(), x, y);
+        if (fWiz >= 0) { const int h = wizHit(x, y); if (h != fWizHover) { fWizHover = h; wake(); } return true; }
+        { const bool hs = kKind == kKindBoth && onSetupButton(x, y); if (hs != fSetupHover) { fSetupHover = hs; wake(); } }
         if (fDrag != kDragNone) {
             // 1:1 with the mouse, Shift for fine moves
             const bool fine = (ev.mod & kModifierShift) != 0;
