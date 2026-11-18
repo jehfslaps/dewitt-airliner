@@ -173,6 +173,13 @@ for p in "${PRODUCTS[@]}"; do
       codesign --force --deep --sign - "$b"
     fi
     codesign --verify --deep --strict "$b" || die "signature of $b"
+    if [ $ext = vst3 ]; then   # the installer may keep one half only (see mkpkg): each half must still verify
+      for a in arm64 x86_64; do
+        rm -rf "build-tests/thin.vst3" && ditto --arch $a "$b" "build-tests/thin.vst3"
+        codesign --verify --deep --strict "build-tests/thin.vst3" || die "signature of $b ($a half only)"
+      done
+      echo "$name.vst3: each half alone verifies"
+    fi
   done
 done
 
@@ -219,6 +226,26 @@ mkpkg() {   # name title version pkg-id
   rm -rf "$w" && mkdir -p "$w/res" "$w/scripts"
   printf '#!/bin/sh\n# let Logic and GarageBand see the new Audio Unit right away\nkillall -9 AudioComponentRegistrar 2>/dev/null\nexit 0\n' > "$w/scripts/postinstall"
   chmod +x "$w/scripts/postinstall"
+  # VST3: FL Studio can't check a two-architecture VST3 on an Apple Silicon Mac without Rosetta (it lists it as
+  # "error"), so the installer keeps only the half that Mac can run. With Rosetta both halves stay (a DAW may run
+  # in Intel mode). Thinning keeps each half's own signature.
+  mkdir -p "$w/scripts-vst3"
+  cat > "$w/scripts-vst3/postinstall" <<EOS
+#!/bin/sh
+B="\${2%/}/Library/Audio/Plug-Ins/VST3/$name.vst3"
+[ -d "\$B" ] || exit 0
+if [ "\$(/usr/sbin/sysctl -n hw.optional.arm64 2>/dev/null)" = 1 ]; then
+  /usr/bin/arch -x86_64 /usr/bin/true 2>/dev/null && exit 0
+  A=arm64
+else
+  A=x86_64
+fi
+T="\$B.thin"
+/bin/rm -rf "\$T"
+if /usr/bin/ditto --arch "\$A" "\$B" "\$T"; then /bin/rm -rf "\$B" && /bin/mv "\$T" "\$B"; else /bin/rm -rf "\$T"; fi
+exit 0
+EOS
+  chmod +x "$w/scripts-vst3/postinstall"
   local choices="" outline=""
   for ext in vst3 component clap; do
     case $ext in vst3) folder=VST3; label="VST3";; component) folder=Components; label="Audio Unit (AU)";; clap) folder=CLAP; label="CLAP";; esac
@@ -232,7 +259,7 @@ d = plistlib.load(open(p, 'rb'))
 for e in d: e['BundleIsRelocatable'] = False      # always install into /Library/Audio/Plug-Ins
 plistlib.dump(d, open(p, 'wb'))
 PY
-    local sc=""; [ $ext = component ] && sc="--scripts $w/scripts"
+    local sc=""; [ $ext = component ] && sc="--scripts $w/scripts"; [ $ext = vst3 ] && sc="--scripts $w/scripts-vst3"
     pkgbuild --root "$w/root-$ext" --component-plist "$w/$ext.plist" $sc --identifier "$id.$ext" --version "$ver" \
              --install-location / "$w/$name-$ext.pkg" > /dev/null
     choices="$choices

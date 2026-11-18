@@ -18,6 +18,8 @@ Rather copy the files yourself? Everything is in the "manual install" folder:
   Dewitt.component  ->  /Library/Audio/Plug-Ins/Components
   Dewitt.vst3       ->  /Library/Audio/Plug-Ins/VST3
   Dewitt.clap       ->  /Library/Audio/Plug-Ins/CLAP
+(FL Studio on an Apple Silicon Mac without Rosetta: use the installer for the VST3.
+ It keeps the Apple Silicon half only, which FL needs there.)
 
 
 GETTING STARTED
