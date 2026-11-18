@@ -97,12 +97,6 @@ Section "CLAP plug-in" SecClap
   ${EndIf}
 SectionEnd
 
-Section "Remove the old JAY files" SecOld
-  ; Dewitt's working name during testing. Projects, settings and presets are kept.
-  Delete "$COMMONFILES64\CLAP\JAY.clap"
-  RMDir /r "$COMMONFILES64\VST3\JAY.vst3"
-SectionEnd
-
 Section "-files"
   SetOutPath "$INSTDIR"
   File "${STAGE}/Dewitt_User_Manual.pdf"
@@ -128,11 +122,9 @@ SectionEnd
 
 LangString DESC_Vst3 ${LANG_ENGLISH} "Dewitt.vst3, for any DAW that supports VST3 (most do)."
 LangString DESC_Clap ${LANG_ENGLISH} "Dewitt.clap, for any DAW that supports CLAP."
-LangString DESC_Old ${LANG_ENGLISH} "Deletes the plug-in files of JAY (Dewitt's old name), so your DAW doesn't list it twice. Your projects, settings and presets are kept."
 !insertmacro MUI_FUNCTION_DESCRIPTION_BEGIN
   !insertmacro MUI_DESCRIPTION_TEXT ${SecVst3} $(DESC_Vst3)
   !insertmacro MUI_DESCRIPTION_TEXT ${SecClap} $(DESC_Clap)
-  !insertmacro MUI_DESCRIPTION_TEXT ${SecOld} $(DESC_Old)
 !insertmacro MUI_FUNCTION_DESCRIPTION_END
 
 Section "Uninstall"
