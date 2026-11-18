@@ -3,6 +3,7 @@
 #include "YanceyParams.hpp"
 #include "YanceySets.hpp"
 #include "FontData.hpp"
+#include "LogoData.hpp"
 #include "YanceyPlatform.hpp"
 #include "YanceySamples.hpp"
 #include "YanceyDecode.hpp"
@@ -277,6 +278,7 @@ public:
         fFontTitle = createFontFromMemory("yancey-title", kFontShrikhand, kFontShrikhandSize, false);
         fFontHeavy = createFontFromMemory("yancey-heavy", kFontDMSansXB, kFontDMSansXBSize, false);
         fFontBold  = createFontFromMemory("yancey-bold", kFontDMSansBold, kFontDMSansBoldSize, false);
+        fLogo = createImageFromMemory(kLogoPng, kLogoPngSize, IMAGE_GENERATE_MIPMAPS);
         fFontMed   = createFontFromMemory("yancey-med", kFontDMSansMed, kFontDMSansMedSize, false);
 
         fTL = makeTheme(false);
@@ -1730,7 +1732,15 @@ protected:
             fChipX[j] = x; fChipW[j] = w;
             x += w + 7.f;
         }
-        drawText(fFontMed, 10.f, fT.sig, kW - 32.f, kFootCY, NanoVG::ALIGN_RIGHT | NanoVG::ALIGN_MIDDLE, "By Jehf Slaps", 0.2f);
+        // the slapworx wordmark, bottom right (the text is a fallback if the image didn't load)
+        if (fLogo.isValid()) {
+            const Size<uint> ls = fLogo.getSize();
+            const float lw = 120.f, lh = lw * (float)ls.getHeight() / (float)std::max(1u, ls.getWidth());
+            const float lx = kW - 32.f - lw, ly = kFootCY - lh * 0.5f;
+            beginPath(); rect(lx, ly, lw, lh); fillPaint(imagePattern(lx, ly, lw, lh, 0.f, fLogo, 1.f)); fill();
+        } else {
+            drawText(fFontMed, 10.f, fT.sig, kW - 32.f, kFootCY, NanoVG::ALIGN_RIGHT | NanoVG::ALIGN_MIDDLE, "slapworx", 0.2f);
+        }
     }
 
     // ---------------------------------------------------------------------------------- setup card
@@ -4332,6 +4342,7 @@ protected:
     Spring fPlusA[kPadsPerPage];                     // the + on an empty pad lighting up
     int fCardSel = -1, fLastScr = -1;
     float fDonutAngle = 0.f, fLastLevel = 0.f;
+    NanoImage fLogo;                // the slapworx wordmark (LogoData.hpp)
     double fLastTime = 0.0;
     int fWake = 3;
     float fLastW = 0.f, fLastH = 0.f; double fSizeChangedAt = 0.0; bool fSizeDirty = false;
