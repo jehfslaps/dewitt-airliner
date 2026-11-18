@@ -110,11 +110,11 @@ jobs:
             --title "Mac $GITHUB_REF_NAME" \
             --notes "Mac test build of Dewitt and Airliner: universal (Apple Silicon + Intel), VST3, AU and CLAP, macOS 10.15+. Checks and signing details are in the run's logs."
 
-      - name: Draft release with the Dewitt download (Run workflow only)
+      - name: Draft release with the Dewitt and Airliner downloads (Run workflow only)
         if: github.event_name == 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           # a DRAFT: only the repo owner can see it, so the public repo doesn't hand out the download
-          gh release create "dewitt-build-${{ github.run_number }}" dist/release/Dewitt_*_Mac.zip --draft \
-            --title "Dewitt Mac download (build ${{ github.run_number }})" --notes "Made by run ${{ github.run_id }}."
+          gh release create "dewitt-build-${{ github.run_number }}" dist/release/Dewitt_*_Mac.zip dist/release/Airliner_*_Mac.zip --draft \
+            --title "Dewitt + Airliner Mac downloads (build ${{ github.run_number }})" --notes "Made by run ${{ github.run_id }}."

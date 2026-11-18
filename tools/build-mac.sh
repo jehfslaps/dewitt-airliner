@@ -361,6 +361,28 @@ ditto -c -k --keepParent "$W" "dist/release/$DZ.zip"
 echo "made dist/release/$DZ.zip ($([ "$NOTARIZED" = 1 ] && echo "signed + notarized" || echo "NOT notarized"))"
 
 # ---------------------------------------------------------------------------------------------------------------
+# 8. the Airliner download: Airliner_v<version>_Mac.zip (installer, README, licenses, manual install)
+step "Airliner download"
+AZ="Airliner_v$AIRLINER_VERSION${LABEL:+-$LABEL}_Mac"
+W="build-tests/$AZ"; rm -rf "$W"; mkdir -p "$W/manual install" "$W/licenses"
+cp "dist/release/Airliner-$AIRLINER_VERSION$SUFFIX-Mac.pkg" "$W/Install Airliner.pkg"
+cp installer/README-Mac-Airliner.txt "$W/README.txt"
+if [ "$NOTARIZED" = 0 ]; then cat >> "$W/README.txt" <<'EOF'
+
+TEST BUILD: not signed with an Apple Developer ID, so macOS asks before opening it.
+Control-click the installer, choose Open, then Open again (or System Settings >
+Privacy & Security > Open Anyway).
+EOF
+fi
+cp dpf/LICENSE "$W/licenses/DPF-ISC.txt"
+cp dpf/dgl/src/nanovg/LICENSE.txt "$W/licenses/NanoVG-zlib.txt"
+cp ft-src/docs/FTL.TXT "$W/licenses/FreeType-FTL.txt"
+for ext in component vst3 clap; do ditto "airliner/bin/Airliner.$ext" "$W/manual install/Airliner.$ext"; done
+rm -f "dist/release/$AZ.zip"
+ditto -c -k --keepParent "$W" "dist/release/$AZ.zip"
+echo "made dist/release/$AZ.zip ($([ "$NOTARIZED" = 1 ] && echo "signed + notarized" || echo "NOT notarized"))"
+
+# ---------------------------------------------------------------------------------------------------------------
 step "Done"
 for f in dist/release/*; do echo "$(du -h "$f" | cut -f1)  $f"; done
 ( cd dist && shasum -a 256 release/* > logs/SHA256SUMS.txt )
