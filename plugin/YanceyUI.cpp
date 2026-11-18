@@ -278,7 +278,7 @@ public:
         fFontTitle = createFontFromMemory("yancey-title", kFontShrikhand, kFontShrikhandSize, false);
         fFontHeavy = createFontFromMemory("yancey-heavy", kFontDMSansXB, kFontDMSansXBSize, false);
         fFontBold  = createFontFromMemory("yancey-bold", kFontDMSansBold, kFontDMSansBoldSize, false);
-        fLogo = createImageFromMemory(kLogoPng, kLogoPngSize, IMAGE_GENERATE_MIPMAPS);
+        fLogo = createImageFromMemory(kLogoPng, kLogoPngSize, 0);   // no mipmaps (black on macOS)
         fFontMed   = createFontFromMemory("yancey-med", kFontDMSansMed, kFontDMSansMedSize, false);
 
         fTL = makeTheme(false);
