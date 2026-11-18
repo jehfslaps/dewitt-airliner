@@ -278,7 +278,6 @@ public:
         fFontTitle = createFontFromMemory("yancey-title", kFontShrikhand, kFontShrikhandSize, false);
         fFontHeavy = createFontFromMemory("yancey-heavy", kFontDMSansXB, kFontDMSansXBSize, false);
         fFontBold  = createFontFromMemory("yancey-bold", kFontDMSansBold, kFontDMSansBoldSize, false);
-        fLogo = createImageFromMemory(kLogoPng, kLogoPngSize, 0);   // no mipmaps (black on macOS)
         fFontMed   = createFontFromMemory("yancey-med", kFontDMSansMed, kFontDMSansMedSize, false);
 
         fTL = makeTheme(false);
@@ -715,6 +714,9 @@ protected:
 
     void onNanoDisplay() override
     {
+        // the logo's texture is made here, where OpenGL is ready: on macOS the constructor runs without a
+        // current OpenGL context, so an image made there draws as a black box
+        if (!fLogoTried) { fLogoTried = true; fLogo = createImageFromMemory(kLogoPng, kLogoPngSize, 0); }
         const float s = (float)getWidth() / kW;
         save();
         scale(s, s);
@@ -4343,6 +4345,7 @@ protected:
     int fCardSel = -1, fLastScr = -1;
     float fDonutAngle = 0.f, fLastLevel = 0.f;
     NanoImage fLogo;                // the slapworx wordmark (LogoData.hpp)
+    bool fLogoTried = false;
     double fLastTime = 0.0;
     int fWake = 3;
     float fLastW = 0.f, fLastH = 0.f; double fSizeChangedAt = 0.0; bool fSizeDirty = false;
